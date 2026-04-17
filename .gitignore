@@ -1,0 +1,19 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Virtual Environment
+venv/
+env/
+.env
+
+# IDE settings
+.vscode/
+.idea/
+
+# Windows/Mac system files
+Thumbs.db
+.DS_Store
+
+# Pygame assets (nếu mày có file test hoặc backup ko dùng đến)
+# assets/backups/

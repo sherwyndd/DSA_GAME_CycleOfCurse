@@ -1,0 +1,3 @@
+WIDTH = 1365
+HEIGHT = 768
+FPS = 60
