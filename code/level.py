@@ -1,7 +1,7 @@
 import pygame
 from player import Player
 from settings import *
-
+from tile import Tile
 class Level:
     def __init__(self, display_surface):
         self.display_surface = display_surface
@@ -15,7 +15,17 @@ class Level:
 
     def create_map(self):
         # Start the player in the middle of the screen
-        self.player = Player((WIDTH // 2, HEIGHT // 2), [self.visible_sprites])
+        for row_index, row in enumerate(WORLD_MAP):
+            for col_index, col in enumerate(row):
+                x = col_index * T_WIDTH
+                y = row_index * T_HEIGHT
+                if (col == 'h'):
+                    y = row_index * 1.07 * T_HEIGHT
+                    Tile((x, y), [self.visible_sprites, self.obstacle_sprites])
+                if col == 'x':
+                    Tile((x, y), [self.visible_sprites, self.obstacle_sprites])
+                if col == 'p':
+                    self.player = Player((x, y), [self.visible_sprites], self.obstacle_sprites)
 
     def run(self):
         # Update and draw the sprites

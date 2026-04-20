@@ -10,7 +10,7 @@ class Game:
         pygame.display.set_caption("Cycle of Curse")
         self.clock = pygame.time.Clock()
         # Adjusted path to use a relative search from the code folder
-        self.background = pygame.image.load("../image/background.png")
+        self.background = pygame.image.load("../image/background4.png")
         self.level = Level(self.screen)
         
     def run(self):
