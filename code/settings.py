@@ -1,10 +1,10 @@
-WIDTH = 1224
-HEIGHT = 711
+WIDTH = 700
+HEIGHT = 500
 FPS = 60
 COLS = 24
 ROWS = 14
-T_WIDTH = WIDTH / COLS  # ~50.125
-T_HEIGHT = HEIGHT / ROWS # ~50.785
+T_WIDTH = 1224 / COLS  # Keep tile size based on original 1224 width
+T_HEIGHT = 711 / ROWS # Keep tile size based on original 711 height
 WORLD_MAP = [
     ['x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x'],
     ['x',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','x'],

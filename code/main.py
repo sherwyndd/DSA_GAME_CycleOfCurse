@@ -9,13 +9,10 @@ class Game:
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("Cycle of Curse")
         self.clock = pygame.time.Clock()
-        # Adjusted path to use a relative search from the code folder
-        self.background = pygame.image.load("../image/background4.png")
         self.level = Level(self.screen)
         
     def run(self):
         while True:
-            self.screen.blit(self.background, (0, 0))
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
