@@ -11,11 +11,16 @@ class Player(pygame.sprite.Sprite):
         self.image = pygame.transform.scale_by(full_size_image, 1/2.5) 
         self.rect = self.image.get_rect(topleft = pos)
         self.obstacle_sprites = obstacle_sprites
-
+        self.hitbox = self.rect.inflate(0, -8)
+        self.attack_cooldown = 400
+        self.attack_time = None
         # Movement setup
         self.direction = pygame.math.Vector2()
         self.speed = 5
-
+        self.is_attacking = False
+    def import_player_assets(self):
+        character_path = '../image/character/player/'
+        self.animations = {'idle': [], 'up': [], 'down': [], 'left': [], 'right': [], 'right_idle' :[], 'left_idle' :[], 'up_idle' :[], 'down_idle' :[], 'attack': [], 'magic': []}
     def input(self):
         keys = pygame.key.get_pressed()
 
@@ -32,29 +37,43 @@ class Player(pygame.sprite.Sprite):
             self.direction.x = -1
         else:
             self.direction.x = 0
+        if (keys[pygame.K_SPACE] and not self.is_attacking):
+            print("attack")
+            self.is_attacking = True
+            self.attack_time = pygame.time.get_ticks()
+        if (keys[pygame.K_LCTRL] and not self.is_attacking):
+            print("magic")
+            self.is_attacking = True
+            self.attack_time = pygame.time.get_ticks()
     def move(self, speed):
         if self.direction.magnitude() != 0:
             self.direction = self.direction.normalize()
-        self.rect.x += self.direction.x * speed
+        self.hitbox.x += self.direction.x * speed
         self.collision("horizontal")
-        self.rect.y += self.direction.y * speed
+        self.hitbox.y += self.direction.y * speed
+        self.rect.center = self.hitbox.center
         self.collision("vertical")
     def collision(self, direction):
         if (direction == "horizontal"):
             for sprite in self.obstacle_sprites:
-                if sprite.rect.colliderect(self.rect):
+                if sprite.hitbox.colliderect(self.hitbox):
                     if (self.direction.x > 0): # moving right
-                        self.rect.right = sprite.rect.left
+                        self.hitbox.right = sprite.hitbox.left
                     if (self.direction.x < 0): # moving left
-                        self.rect.left = sprite.rect.right
+                        self.hitbox.left = sprite.hitbox.right
         if (direction == "vertical"):
             for sprite in self.obstacle_sprites:
-                if sprite.rect.colliderect(self.rect):
+                if sprite.hitbox.colliderect(self.hitbox):
                     if (self.direction.y > 0): # moving down
-                        self.rect.bottom = sprite.rect.top
+                        self.hitbox.bottom = sprite.hitbox.top
                     if (self.direction.y < 0): # moving up
-                        self.rect.top = sprite.rect.bottom
-
+                        self.hitbox.top = sprite.hitbox.bottom
+    def cooldowns(self):
+        current_time = pygame.time.get_ticks()
+        if (self.is_attacking):
+            if (current_time - self.attack_time >= self.attack_cooldown):
+                self.is_attacking = False
     def update(self):
         self.input()
+        self.cooldowns()
         self.move(self.speed)

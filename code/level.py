@@ -2,6 +2,7 @@ import pygame
 from player import Player
 from settings import *
 from tile import Tile
+
 class Level:
     def __init__(self, display_surface):
         self.display_surface = display_surface
@@ -10,20 +11,33 @@ class Level:
         self.visible_sprites = YSortCameraGroup()
         self.obstacle_sprites = pygame.sprite.Group()
         
+        # Load the full background image for auto-cropping object slices
+        self.full_bg_surf = pygame.image.load('../image/background4.png').convert_alpha()
+        
         # Sprite setup
         self.create_map()
 
     def create_map(self):
-        # Start the player in the middle of the screen
         for row_index, row in enumerate(WORLD_MAP):
             for col_index, col in enumerate(row):
                 x = col_index * T_WIDTH
                 y = row_index * T_HEIGHT
-                if (col == 'h'):
-                    y = row_index * 1.07 * T_HEIGHT
-                    Tile((x, y), [self.visible_sprites, self.obstacle_sprites])
-                if col == 'x':
-                    Tile((x, y), [self.visible_sprites, self.obstacle_sprites])
+                
+                # Logic for obstacle tiles ('x' and 'h')
+                if col == 'h' or col == 'x':
+                    # Determine tile dimensions and offset
+                    if col == 'h':
+                        # torch or taller object
+                        offset = T_HEIGHT * 0.5
+                        tile_surf = pygame.Surface((T_WIDTH, T_HEIGHT + offset), pygame.SRCALPHA)
+                        tile_surf.blit(self.full_bg_surf, (0, 0), pygame.Rect(x, y - offset, T_WIDTH, T_HEIGHT + offset))
+                        Tile((x, y - offset), [self.visible_sprites, self.obstacle_sprites], surface = tile_surf)
+                    else:
+                        # standard obstacle
+                        tile_surf = pygame.Surface((T_WIDTH, T_HEIGHT), pygame.SRCALPHA)
+                        tile_surf.blit(self.full_bg_surf, (0, 0), pygame.Rect(x, y, T_WIDTH, T_HEIGHT))
+                        Tile((x, y), [self.visible_sprites, self.obstacle_sprites], surface = tile_surf)
+
                 if col == 'p':
                     self.player = Player((x, y), [self.visible_sprites], self.obstacle_sprites)
 
@@ -60,11 +74,11 @@ class YSortCameraGroup(pygame.sprite.Group):
         elif self.offset.y > self.floor_rect.height - (self.half_height * 2):
             self.offset.y = self.floor_rect.height - (self.half_height * 2)
 
-        # Drawing the floor
+        # 1. Drawing the floor first
         floor_offset_pos = self.floor_rect.topleft - self.offset
         self.display_surface.blit(self.floor_surf, floor_offset_pos)
 
-        # Drawing sprites with Y-sorting
-        for sprite in sorted(self.sprites(), key = lambda sprite: sprite.rect.centery):
+        # 2. Drawing sprites including player, sorted by hitbox.centery for depth effect
+        for sprite in sorted(self.sprites(), key = lambda sprite: sprite.hitbox.centery):
             offset_pos = sprite.rect.topleft - self.offset
             self.display_surface.blit(sprite.image, offset_pos)
