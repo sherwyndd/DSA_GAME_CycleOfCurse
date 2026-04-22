@@ -3,8 +3,10 @@ HEIGHT = 700
 FPS = 60
 COLS = 24
 ROWS = 14
-T_WIDTH = 1224 / COLS  # Keep tile size based on original 1224 width
-T_HEIGHT = 711 / ROWS # Keep tile size based on original 711 height
+T_WIDTH = 1224 // COLS 
+T_HEIGHT = 711 // ROWS 
+# PLAYER_INDEX: 1=Monkey, 2=Megumi, 3=Sukuna
+PLAYER_INDEX = 2
 WORLD_MAP = [
     ['x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x'],
     ['x',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','x'],

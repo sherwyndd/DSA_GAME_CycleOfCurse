@@ -16,6 +16,14 @@ class Player(pygame.sprite.Sprite):
         self.attack_cooldown = 400
         self.attack_time = None
         
+        # Character configuration
+        self.char_config = {
+            1: {'name': 'Monkey', 'img': 'monkey.png', 'walk': 'monkey-walk.png', 'color': (255, 220, 180)},
+            2: {'name': 'Megumi', 'img': 'megumi.png', 'walk': None, 'color': (255, 230, 210)},
+            3: {'name': 'Sukuna', 'img': 'sukuna.png', 'walk': None, 'color': (255, 200, 200)}
+        }
+        self.player_index = PLAYER_INDEX
+        
         # Animation setup
         self.import_player_assets()
         self.status = 'down_idle'
@@ -42,7 +50,7 @@ class Player(pygame.sprite.Sprite):
                 visited.add((x, y))
                 color = surf.get_at((x, y))
                 diff = sum(abs(color[i]-bg_color[i]) for i in range(3))
-                if diff < 60:
+                if diff < 100: 
                     surf.set_at((x, y), (0, 0, 0, 0))
                     stack.extend([(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)])
         return surf
@@ -58,7 +66,7 @@ class Player(pygame.sprite.Sprite):
                 for c in range(cols):
                     rect = pygame.Rect(c * w, r * h, w, h)
                     frame = sheet.subsurface(rect).copy()
-                    frame = pygame.transform.scale_by(frame, 1/2.5)
+                    frame = pygame.transform.scale_by(frame, 0.4) 
                     frames.append(frame)
             return frames
         except:
@@ -71,32 +79,35 @@ class Player(pygame.sprite.Sprite):
             'attack': [], 'dash': [] 
         }
 
-        # Load base monkies
-        try:
-            idle_surf = pygame.image.load('../image/monkey.png').convert_alpha()
-            idle_surf = self.remove_background_floodfill(idle_surf)
-            idle_surf = pygame.transform.scale_by(idle_surf, 1/2.5)
-        except:
-            idle_surf = pygame.Surface((64,64))
-            idle_surf.fill('red')
+        # Load character config
+        config = self.char_config.get(self.player_index, self.char_config[1])
+        char_path = '../image/' + config['img']
+        walk_path = '../image/' + config['walk'] if config['walk'] else None
 
-        walk_frames = self.slice_spritesheet('../image/monkey-walk.png', 4, 1)
-        if not walk_frames: walk_frames = [idle_surf]
+        # Load base idle sprite
+        try:
+            idle_surf = pygame.image.load(char_path).convert_alpha()
+            idle_surf = self.remove_background_floodfill(idle_surf)
+            idle_surf = pygame.transform.scale_by(idle_surf, 0.4)
+        except:
+            idle_surf = pygame.Surface((64,64)); idle_surf.fill('red')
+
+        # Load walk animation if available
+        if walk_path:
+            walk_frames = self.slice_spritesheet(walk_path, 4, 1)
+        else:
+            walk_frames = [idle_surf]
 
         flipped_idle = pygame.transform.flip(idle_surf, True, False)
         flipped_walk = [pygame.transform.flip(f, True, False) for f in walk_frames]
 
         # Fill animations dictionary
         self.animations['idle'] = [idle_surf]
-        self.animations['down_idle'] = [idle_surf]
-        self.animations['up_idle'] = [idle_surf]
-        self.animations['right_idle'] = [idle_surf]
-        self.animations['left_idle'] = [flipped_idle]
+        self.animations['down_idle'] = [idle_surf]; self.animations['up_idle'] = [idle_surf]
+        self.animations['right_idle'] = [idle_surf]; self.animations['left_idle'] = [flipped_idle]
         
-        self.animations['right'] = walk_frames
-        self.animations['left'] = flipped_walk
-        self.animations['up'] = walk_frames 
-        self.animations['down'] = walk_frames
+        self.animations['right'] = walk_frames; self.animations['left'] = flipped_walk
+        self.animations['up'] = walk_frames; self.animations['down'] = walk_frames
         
         self.animations['attack'] = [idle_surf] 
         self.animations['dash'] = [idle_surf]
@@ -133,26 +144,25 @@ class Player(pygame.sprite.Sprite):
             sin_val = math.sin(progress * math.pi)
             
             if self.attack_type == 'attack':
-                # Lean 10 degrees down/forward
                 angle = sin_val * 10
                 if 'left' in self.status: angle *= -1
                 
-                # DRAW ARM LOWERED
-                arm_color = (255, 220, 180)
+                config = self.char_config.get(self.player_index, self.char_config[1])
+                arm_color = config['color']
                 arm_w, arm_h = 10, 5
                 arm_x = image.get_width() * 0.7
-                arm_y = image.get_height() * 0.65 # Lowered arm position
+                arm_y = image.get_height() * 0.65
                 if 'left' in self.status: arm_x = image.get_width() * 0.3 - arm_w
                 
                 pygame.draw.rect(image, arm_color, (arm_x, arm_y, arm_w, arm_h))
                 
                 image = pygame.transform.rotate(image, angle)
-                self.effect_offset = sin_val * 3 
-            else: # dash (L-CTRL)
-                angle = sin_val * 15 # Tilt
+                self.effect_offset = 0 # Character stays still
+            else: # dash
+                angle = sin_val * 15
                 if 'left' in self.status: angle *= -1
                 image = pygame.transform.rotate(image, angle)
-                self.effect_offset = sin_val * 7 # Dash distance reduced by half (was 15)
+                self.effect_offset = sin_val * 7
         else:
             self.effect_offset = 0
 
