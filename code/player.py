@@ -4,7 +4,19 @@ import math
 from settings import *
 
 class Player(pygame.sprite.Sprite):
-    def __init__(self, pos, groups, obstacle_sprites):
+    """
+    Lớp đại diện cho nhân vật người chơi trong game.
+    Quản lý di chuyển, va chạm, hoạt ảnh (animation) và các kỹ năng của nhân vật.
+    """
+    def __init__(self, pos, groups, obstacle_sprites, create_attack):
+        """
+        Khởi tạo đối tượng Player.
+        
+        Args:
+            pos (tuple): Vị trí ban đầu của nhân vật (x, y).
+            groups (list): Danh sách các nhóm sprite mà nhân vật thuộc về.
+            obstacle_sprites (pygame.sprite.Group): Nhóm các sprite vật cản để kiểm tra va chạm.
+        """
         super().__init__(groups)
         
         # Attribute setup
@@ -13,12 +25,18 @@ class Player(pygame.sprite.Sprite):
         self.speed = 5
         self.is_attacking = False
         self.attack_type = None # 'attack' or 'dash'
-        self.attack_cooldown = 400
+        self.can_attack = True
+        self.can_dash = True
         self.attack_time = None
-        
+        self.action_duration = 250 # Faster attack (was 400)
+        self.attack_cooldown_duration = 200 # Faster cooldown (was 400)
+        self.dash_cooldown_duration = 2000
+        self.attack_cooldown_time = 0
+        self.dash_cooldown_time = 0
+        self.create_attack = create_attack
         # Character configuration
         self.char_config = {
-            1: {'name': 'Monkey', 'img': 'monkey.png', 'walk': 'monkey-walk.png', 'color': (255, 220, 180)},
+            1: {'name': 'Monkey', 'img': 'monkey.png', 'walk': 'monkey-walk.png', 'color': (235, 202, 149)},
             2: {'name': 'Megumi', 'img': 'megumi.png', 'walk': None, 'color': (255, 230, 210)},
             3: {'name': 'Sukuna', 'img': 'sukuna.png', 'walk': None, 'color': (255, 200, 200)}
         }
@@ -39,6 +57,16 @@ class Player(pygame.sprite.Sprite):
         self.effect_offset = 0
 
     def remove_background_floodfill(self, surf):
+        """
+        Thuật toán Flood Fill để xóa nền ảnh một cách thông minh.
+        Chỉ xóa các điểm ảnh nền kết nối với các góc, giúp giữ lại các chi tiết trắng bên trong (như mắt).
+
+        Args:
+            surf (pygame.Surface): Surface cần xử lý xóa nền.
+            
+        Returns:
+            pygame.Surface: Surface đã được làm sạch nền.
+        """
         width, height = surf.get_size()
         stack = [(0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)]
         visited = set()
@@ -54,6 +82,8 @@ class Player(pygame.sprite.Sprite):
                     surf.set_at((x, y), (0, 0, 0, 0))
                     stack.extend([(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)])
         return surf
+
+
 
     def slice_spritesheet(self, path, cols, rows):
         try:
@@ -124,7 +154,7 @@ class Player(pygame.sprite.Sprite):
         elif self.direction.y == 1: self.status = 'down'
         else:
             if 'idle' not in self.status:
-                self.status += '_idle'
+                self.status = self.status.split('_')[0] + '_idle'
 
     def animate(self):
         base_status = self.status.split('_')[0]
@@ -140,29 +170,17 @@ class Player(pygame.sprite.Sprite):
         image = animation[int(self.frame_index)].copy()
         
         if self.is_attacking:
-            progress = (pygame.time.get_ticks() - self.attack_time) / self.attack_cooldown
+            progress = (pygame.time.get_ticks() - self.attack_time) / self.action_duration
             sin_val = math.sin(progress * math.pi)
             
             if self.attack_type == 'attack':
-                angle = sin_val * 10
-                if 'left' in self.status: angle *= -1
-                
-                config = self.char_config.get(self.player_index, self.char_config[1])
-                arm_color = config['color']
-                arm_w, arm_h = 10, 5
-                arm_x = image.get_width() * 0.7
-                arm_y = image.get_height() * 0.65
-                if 'left' in self.status: arm_x = image.get_width() * 0.3 - arm_w
-                
-                pygame.draw.rect(image, arm_color, (arm_x, arm_y, arm_w, arm_h))
-                
-                image = pygame.transform.rotate(image, angle)
-                self.effect_offset = 0 # Character stays still
+                # Character stays still during attack as requested
+                self.effect_offset = 0 
             else: # dash
                 angle = sin_val * 15
                 if 'left' in self.status: angle *= -1
                 image = pygame.transform.rotate(image, angle)
-                self.effect_offset = sin_val * 7
+                self.effect_offset = sin_val * 15
         else:
             self.effect_offset = 0
 
@@ -170,6 +188,12 @@ class Player(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(center = self.hitbox.center)
 
     def input(self):
+        """
+        Xử lý các phím nhấn từ người dùng để điều khiển nhân vật.
+        - W, A, S, D: Di chuyển.
+        - SPACE: Tấn công (Attack).
+        - L-CTRL: Lướt nhanh (Dash).
+        """
         if self.is_attacking: return
 
         keys = pygame.key.get_pressed()
@@ -182,18 +206,23 @@ class Player(pygame.sprite.Sprite):
         else: self.direction.x = 0
 
         # SPACE = ATTACK
-        if (keys[pygame.K_SPACE] and not self.is_attacking):
+        if (keys[pygame.K_SPACE] and not self.is_attacking and self.can_attack):
             self.is_attacking = True
             self.attack_type = 'attack'
+            self.create_attack() # Re-enabled
             self.attack_time = pygame.time.get_ticks()
             self.frame_index = 0
+            self.direction.x = 0
+            self.direction.y = 0
             
         # L-CTRL = DASH 
-        if (keys[pygame.K_LCTRL] and not self.is_attacking):
+        if (keys[pygame.K_LCTRL] and not self.is_attacking and self.can_dash):
             self.is_attacking = True
             self.attack_type = 'dash'
             self.attack_time = pygame.time.get_ticks()
             self.frame_index = 0
+            self.direction.x = 0
+            self.direction.y = 0
 
     def move(self, speed):
         if self.direction.magnitude() != 0:
@@ -230,9 +259,28 @@ class Player(pygame.sprite.Sprite):
 
     def cooldowns(self):
         current_time = pygame.time.get_ticks()
-        if (self.is_attacking):
-            if (current_time - self.attack_time >= self.attack_cooldown):
+        
+        # Kiểm tra kết thúc hành động (Action duration)
+        if self.is_attacking:
+            if current_time - self.attack_time >= self.action_duration:
                 self.is_attacking = False
+                # Bắt đầu thời gian hồi chiêu sau khi hành động kết thúc
+                if self.attack_type == 'attack':
+                    self.can_attack = False
+                    self.attack_cooldown_time = current_time
+                elif self.attack_type == 'dash':
+                    self.can_dash = False
+                    self.dash_cooldown_time = current_time
+
+        # Kiểm tra hồi chiêu cho Attack
+        if not self.can_attack:
+            if current_time - self.attack_cooldown_time >= self.attack_cooldown_duration:
+                self.can_attack = True
+        
+        # Kiểm tra hồi chiêu cho Dash
+        if not self.can_dash:
+            if current_time - self.dash_cooldown_time >= self.dash_cooldown_duration:
+                self.can_dash = True
 
     def update(self):
         self.input()

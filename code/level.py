@@ -2,15 +2,22 @@ import pygame
 from player import Player
 from settings import *
 from tile import Tile
+from weapon import Weapon
 
 class Level:
+    """
+    Lớp quản lý cấp độ (level) của trò chơi.
+    Chịu trách nhiệm tạo bản đồ, quản lý các nhóm sprite và điều phối quá trình vẽ/cập nhật.
+    """
     def __init__(self, display_surface):
+
+
         self.display_surface = display_surface
         
         # Sprite groups
         self.visible_sprites = YSortCameraGroup()
         self.obstacle_sprites = pygame.sprite.Group()
-        
+    
         # Load the full background image for auto-cropping object slices
         self.full_bg_surf = pygame.image.load('../image/background4.png').convert_alpha()
         
@@ -18,6 +25,11 @@ class Level:
         self.create_map()
 
     def create_map(self):
+
+        """
+        Đọc dữ liệu từ bản đồ (WORLD_MAP) và khởi tạo các đối tượng tương ứng (Tiles, Player).
+        Sử dụng kỹ thuật Crop tự động từ ảnh nền để tạo các vật cản.
+        """
         for row_index, row in enumerate(WORLD_MAP):
             for col_index, col in enumerate(row):
                 x = col_index * T_WIDTH
@@ -39,14 +51,19 @@ class Level:
                         Tile((x, y), [self.visible_sprites, self.obstacle_sprites], surface = tile_surf)
 
                 if col == 'p':
-                    self.player = Player((x, y), [self.visible_sprites], self.obstacle_sprites)
-
+                    self.player = Player((x, y), [self.visible_sprites], self.obstacle_sprites, self.create_attack)
+    def create_attack(self):
+        Weapon(self.player, [self.visible_sprites])
     def run(self):
         # Update and draw the sprites
         self.visible_sprites.update()
         self.visible_sprites.custom_draw(self.player)
 
 class YSortCameraGroup(pygame.sprite.Group):
+    """
+    Lớp nhóm Sprite tùy chỉnh tích hợp Camera và sắp xếp theo trục Y.
+    Giúp tạo hiệu ứng chiều sâu (đối tượng ở dưới sẽ che đối tượng ở trên) và di chuyển camera theo người chơi.
+    """
     def __init__(self):
         super().__init__()
         self.display_surface = pygame.display.get_surface()
@@ -59,6 +76,12 @@ class YSortCameraGroup(pygame.sprite.Group):
         self.floor_rect = self.floor_surf.get_rect(topleft = (0,0))
 
     def custom_draw(self, player):
+        """
+        Vẽ các sprite lên màn hình với sự tính toán offset của camera và sắp xếp thứ tự hiển thị.
+        
+        Args:
+            player (Player): Đối tượng player để camera đi theo.
+        """
         # Getting the offset
         self.offset.x = player.rect.centerx - self.half_width
         self.offset.y = player.rect.centery - self.half_height
