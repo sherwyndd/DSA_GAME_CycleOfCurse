@@ -7,7 +7,19 @@ T_WIDTH = 1224 // COLS
 T_HEIGHT = 711 // ROWS 
 # PLAYER_INDEX: 1=Monkey, 2=Megumi, 3=Sukuna
 PLAYER_INDEX = 1
+# WEAPON_INDEX: 0=Sword, 1=Lance, 2=Axe, 3=Rapier, 4=Sai
+WEAPON_INDEX = 0
+
+# weapons 
+weapon_data = {
+	'sword': {'cooldown': 100, 'damage': 15,'graphic':'../graphics/weapons/sword/full.png'},
+	'lance': {'cooldown': 400, 'damage': 30,'graphic':'../graphics/weapons/lance/full.png'},
+	'axe': {'cooldown': 300, 'damage': 20, 'graphic':'../graphics/weapons/axe/full.png'},
+	'rapier':{'cooldown': 50, 'damage': 8, 'graphic':'../graphics/weapons/rapier/full.png'},
+	'sai':{'cooldown': 80, 'damage': 10, 'graphic':'../graphics/weapons/sai/full.png'}}
+
 WORLD_MAP = [
+
     ['x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x','x'],
     ['x',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','x'],
     ['x',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','x'],

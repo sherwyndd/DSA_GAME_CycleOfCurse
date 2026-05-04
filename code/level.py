@@ -18,6 +18,9 @@ class Level:
         self.visible_sprites = YSortCameraGroup()
         self.obstacle_sprites = pygame.sprite.Group()
     
+        # Attack sprites
+        self.current_attack = None
+    
         # Load the full background image for auto-cropping object slices
         self.full_bg_surf = pygame.image.load('../image/background4.png').convert_alpha()
         
@@ -51,9 +54,14 @@ class Level:
                         Tile((x, y), [self.visible_sprites, self.obstacle_sprites], surface = tile_surf)
 
                 if col == 'p':
-                    self.player = Player((x, y), [self.visible_sprites], self.obstacle_sprites, self.create_attack)
+                    self.player = Player((x, y), [self.visible_sprites], self.obstacle_sprites, self.create_attack, self.destroy_attack)
     def create_attack(self):
-        Weapon(self.player, [self.visible_sprites])
+        self.current_attack = Weapon(self.player, [self.visible_sprites])
+
+    def destroy_attack(self):
+        if self.current_attack:
+            self.current_attack.kill()
+        self.current_attack = None
     def run(self):
         # Update and draw the sprites
         self.visible_sprites.update()

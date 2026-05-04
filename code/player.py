@@ -8,7 +8,7 @@ class Player(pygame.sprite.Sprite):
     Lớp đại diện cho nhân vật người chơi trong game.
     Quản lý di chuyển, va chạm, hoạt ảnh (animation) và các kỹ năng của nhân vật.
     """
-    def __init__(self, pos, groups, obstacle_sprites, create_attack):
+    def __init__(self, pos, groups, obstacle_sprites, create_attack, destroy_attack):
         """
         Khởi tạo đối tượng Player.
         
@@ -33,7 +33,6 @@ class Player(pygame.sprite.Sprite):
         self.dash_cooldown_duration = 2000
         self.attack_cooldown_time = 0
         self.dash_cooldown_time = 0
-        self.create_attack = create_attack
         # Character configuration
         self.char_config = {
             1: {'name': 'Monkey', 'img': 'monkey.png', 'walk': 'monkey-walk.png', 'color': (235, 202, 149)},
@@ -41,6 +40,16 @@ class Player(pygame.sprite.Sprite):
             3: {'name': 'Sukuna', 'img': 'sukuna.png', 'walk': None, 'color': (255, 200, 200)}
         }
         self.player_index = PLAYER_INDEX
+        
+        # weapon setup
+        self.create_attack = create_attack
+        self.destroy_attack = destroy_attack
+        self.weapon_index = WEAPON_INDEX
+        self.weapon = list(weapon_data.keys())[self.weapon_index]
+        self.can_switch_weapon = True
+        self.weapon_switch_time = None
+        self.switch_duration_cooldown = 200
+
         
         # Animation setup
         self.import_player_assets()
@@ -188,30 +197,23 @@ class Player(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(center = self.hitbox.center)
 
     def input(self):
-        """
-        Xử lý các phím nhấn từ người dùng để điều khiển nhân vật.
-        - W, A, S, D: Di chuyển.
-        - SPACE: Tấn công (Attack).
-        - L-CTRL: Lướt nhanh (Dash).
-        """
         if self.is_attacking: return
 
         keys = pygame.key.get_pressed()
-        if keys[pygame.K_w]: self.direction.y = -1
-        elif keys[pygame.K_s]: self.direction.y = 1
+        if keys[pygame.K_w]: self.direction.y = -1; self.status = 'up'
+        elif keys[pygame.K_s]: self.direction.y = 1; self.status = 'down'
         else: self.direction.y = 0
 
-        if keys[pygame.K_d]: self.direction.x = 1
-        elif keys[pygame.K_a]: self.direction.x = -1
+        if keys[pygame.K_d]: self.direction.x = 1; self.status = 'right'
+        elif keys[pygame.K_a]: self.direction.x = -1; self.status = 'left'
         else: self.direction.x = 0
 
         # SPACE = ATTACK
         if (keys[pygame.K_SPACE] and not self.is_attacking and self.can_attack):
             self.is_attacking = True
             self.attack_type = 'attack'
-            self.create_attack() # Re-enabled
             self.attack_time = pygame.time.get_ticks()
-            self.frame_index = 0
+            self.create_attack()
             self.direction.x = 0
             self.direction.y = 0
             
@@ -223,6 +225,20 @@ class Player(pygame.sprite.Sprite):
             self.frame_index = 0
             self.direction.x = 0
             self.direction.y = 0
+
+
+        # Q = SWITCH WEAPON
+        if keys[pygame.K_q] and self.can_switch_weapon:
+            self.can_switch_weapon = False
+            self.weapon_switch_time = pygame.time.get_ticks()
+            
+            if self.weapon_index < len(list(weapon_data.keys())) - 1:
+                self.weapon_index += 1
+            else:
+                self.weapon_index = 0
+                
+            self.weapon = list(weapon_data.keys())[self.weapon_index]
+
 
     def move(self, speed):
         if self.direction.magnitude() != 0:
@@ -264,8 +280,8 @@ class Player(pygame.sprite.Sprite):
         if self.is_attacking:
             if current_time - self.attack_time >= self.action_duration:
                 self.is_attacking = False
-                # Bắt đầu thời gian hồi chiêu sau khi hành động kết thúc
                 if self.attack_type == 'attack':
+                    self.destroy_attack()
                     self.can_attack = False
                     self.attack_cooldown_time = current_time
                 elif self.attack_type == 'dash':
@@ -281,6 +297,12 @@ class Player(pygame.sprite.Sprite):
         if not self.can_dash:
             if current_time - self.dash_cooldown_time >= self.dash_cooldown_duration:
                 self.can_dash = True
+
+        # Kiểm tra hồi chiêu cho đổi vũ khí
+        if not self.can_switch_weapon:
+            if current_time - self.weapon_switch_time >= self.switch_duration_cooldown:
+                self.can_switch_weapon = True
+
 
     def update(self):
         self.input()
