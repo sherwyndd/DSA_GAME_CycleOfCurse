@@ -2,6 +2,7 @@ import pygame
 import os
 import math
 from settings import *
+from support import *
 
 class Player(pygame.sprite.Sprite):
 	def __init__(self,pos,groups,obstacle_sprites,create_attack,destroy_attack):
@@ -52,27 +53,18 @@ class Player(pygame.sprite.Sprite):
 		self.attack_cooldown_time = 0
 		self.dash_cooldown_time = 0
 
-	def remove_background_floodfill(self, surf):
-		width, height = surf.get_size()
-		stack = [(0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)]
-		visited = set()
-		bg_color = surf.get_at((0,0))
-		
-		while stack:
-			x, y = stack.pop()
-			if (x, y) not in visited and 0 <= x < width and 0 <= y < height:
-				visited.add((x, y))
-				color = surf.get_at((x, y))
-				diff = sum(abs(color[i]-bg_color[i]) for i in range(3))
-				if diff < 100: 
-					surf.set_at((x, y), (0, 0, 0, 0))
-					stack.extend([(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)])
-		return surf
+		# stats
+		self.stats = {'health': 100,'energy':60,'attack': 10,'magic': 4,'speed': 5}
+		self.health = self.stats['health'] * 1
+		self.energy = self.stats['energy'] * 0
+		self.exp = 1
+
+	# Flood fill moved to support.py
 
 	def slice_spritesheet(self, path, cols, rows, scale):
 		try:
 			sheet = pygame.image.load(path).convert_alpha()
-			sheet = self.remove_background_floodfill(sheet)
+			sheet = remove_background_floodfill(sheet)
 			w = sheet.get_width() // cols
 			h = sheet.get_height() // rows
 			frames = []
@@ -100,7 +92,7 @@ class Player(pygame.sprite.Sprite):
 
 		try:
 			idle_surf = pygame.image.load(char_path).convert_alpha()
-			idle_surf = self.remove_background_floodfill(idle_surf)
+			idle_surf = remove_background_floodfill(idle_surf)
 			idle_surf = pygame.transform.scale_by(idle_surf, scale)
 		except:
 			idle_surf = pygame.Surface((64,64)); idle_surf.fill('red')
