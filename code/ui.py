@@ -21,10 +21,28 @@ class UI:
 			weapon_surf = remove_background_floodfill(weapon_surf, threshold = 40)
 			self.weapon_graphics.append(weapon_surf)
 
+		# convert magic dictionary
+		self.magic_graphics = []
+		for magic in magic_data.values():
+			magic_surf = pygame.image.load(magic['graphic']).convert_alpha()
+			magic_surf = remove_background_floodfill(magic_surf, threshold = 40)
+			magic_surf = pygame.transform.scale(magic_surf, (50, 50))
+			self.magic_graphics.append(magic_surf)
 
-	def show_bar(self,current,max_amount,bg_rect,color):
+
+	def show_bar(self,current,max_amount,bg_rect,color, target_amount = None):
 		# draw bg 
 		pygame.draw.rect(self.display_surface,UI_BG_COLOR,bg_rect)
+
+		# drawing target/faint bar
+		if target_amount and target_amount > current:
+			target_ratio = target_amount / max_amount
+			target_width = bg_rect.width * target_ratio
+			target_rect = bg_rect.copy()
+			target_rect.width = target_width
+			# Faint color (e.g., darker red for health)
+			faint_color = '#770000' if color == HEALTH_COLOR else color
+			pygame.draw.rect(self.display_surface,faint_color,target_rect)
 
 		# converting stat to pixel
 		ratio = current / max_amount
@@ -36,8 +54,8 @@ class UI:
 		pygame.draw.rect(self.display_surface,color,current_rect)
 		pygame.draw.rect(self.display_surface,UI_BORDER_COLOR,bg_rect,3)
 
-	def show_exp(self,exp):
-		text_surf = self.font.render(str(int(exp)),False,TEXT_COLOR)
+	def show_map_index(self,index):
+		text_surf = self.font.render(f'MAP: {index}',False,TEXT_COLOR)
 		x = self.display_surface.get_size()[0] - 20
 		y = self.display_surface.get_size()[1] - 20
 		text_rect = text_surf.get_rect(bottomright = (x,y))
@@ -55,17 +73,30 @@ class UI:
 			pygame.draw.rect(self.display_surface,UI_BORDER_COLOR,bg_rect,3)
 		return bg_rect
 
+	def show_key_label(self, text, box_rect):
+		text_surf = self.font.render(text, False, TEXT_COLOR)
+		text_rect = text_surf.get_rect(topleft = box_rect.topleft + pygame.math.Vector2(5,5))
+		self.display_surface.blit(text_surf, text_rect)
+
 	def weapon_overlay(self,weapon_index,has_switched):
-		bg_rect = self.selection_box(10,610,has_switched) # Adjusted Y to fit smaller screen (700)
+		bg_rect = self.selection_box(10,610,has_switched) 
 		weapon_surf = self.weapon_graphics[weapon_index]
 		weapon_rect = weapon_surf.get_rect(center = bg_rect.center)
-
 		self.display_surface.blit(weapon_surf,weapon_rect)
+		self.show_key_label('Q', bg_rect)
 
-	def display(self,player):
-		self.show_bar(player.health,player.stats['health'],self.health_bar_rect,HEALTH_COLOR)
+	def magic_overlay(self,magic_index,has_switched):
+		bg_rect = self.selection_box(80,615,has_switched) 
+		magic_surf = self.magic_graphics[magic_index]
+		magic_rect = magic_surf.get_rect(center = bg_rect.center)
+		self.display_surface.blit(magic_surf,magic_rect)
+		self.show_key_label('Z', bg_rect)
+
+	def display(self,player,map_index):
+		self.show_bar(player.health,player.stats['health'],self.health_bar_rect,HEALTH_COLOR, player.target_health)
 		self.show_bar(player.energy,player.stats['energy'],self.energy_bar_rect,ENERGY_COLOR)
 
-		self.show_exp(player.exp)
+		self.show_map_index(map_index)
 
 		self.weapon_overlay(player.weapon_index,not player.can_switch_weapon)
+		self.magic_overlay(player.magic_index,not player.can_switch_magic)

@@ -29,7 +29,7 @@ class Enemy(pygame.sprite.Sprite):
         self.change_direction_timer = 0
         
     def import_enemy_assets(self):
-        enemy_path = f'../image/cursed_spirits/{self.enemy_type}.png'
+        enemy_path = f'../graphics/cursed_spirits/{self.enemy_type}.png'
         try:
             sprite = pygame.image.load(enemy_path).convert_alpha()
             # Remove white background similar to player

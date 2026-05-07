@@ -4,6 +4,8 @@ from tile import Tile
 from player import Player
 from weapon import Weapon
 from ui import UI
+from magic import MagicPlayer
+from support import remove_background_floodfill
 
 class Level:
 	def __init__(self):
@@ -19,14 +21,27 @@ class Level:
 		self.current_attack = None
 
 		# background setup - now handled in create_map
-		# self.full_bg_surf = pygame.image.load('../image/background4.png').convert_alpha()
+		# self.full_bg_surf = pygame.image.load('../graphics/background4.png').convert_alpha()
 
 		# sprite setup
-		self.current_map = 'main'
+		self.current_map = 'first'
+		
+		# background cache
+		self.bg_cache = {}
+		for map_name, data in MAPS.items():
+			path = data['bg']
+			size = (data['width'], data['height'])
+			surf = pygame.image.load(path).convert()
+			surf = pygame.transform.scale(surf, size)
+			self.bg_cache[map_name] = surf
+
 		self.create_map()
 		
 		# user interface
 		self.ui = UI()
+
+		# magic 
+		self.magic_player = MagicPlayer(None)
 
 	def create_map(self):
 		map_data = MAPS[self.current_map]
@@ -39,7 +54,7 @@ class Level:
 		self.t_height = self.map_height // ROWS
 
 		# update floor in camera group
-		self.visible_sprites.update_floor(map_data['bg'], (self.map_width, self.map_height))
+		self.visible_sprites.update_floor_from_surf(self.bg_cache[self.current_map])
 
 		for row_index,row in enumerate(layout):
 			for col_index, col in enumerate(row):
@@ -58,14 +73,25 @@ class Level:
 						Tile((x, y), [self.visible_sprites, self.obstacle_sprites], 'invisible', tile_surf)
 
 				if col == 'g':
-					tile_surf = pygame.Surface((self.t_width, self.t_height))
-					tile_surf.fill('black')
-					Tile((x, y), [self.visible_sprites], 'object', tile_surf)
+					# Determine neighbor for seamless transition
+					neighbor_col = col_index - 1 if col_index > 0 else col_index + 1
+					neighbor_x = neighbor_col * self.t_width
+					
+					# Copy floor from neighbor, flip it, and blit onto current floor
+					gate_surf = pygame.Surface((self.t_width, self.t_height))
+					gate_surf.blit(self.visible_sprites.floor_surf, (0, 0), pygame.Rect(neighbor_x, y, self.t_width, self.t_height))
+					gate_surf = pygame.transform.flip(gate_surf, True, False)
+					
+					self.visible_sprites.floor_surf.blit(gate_surf, (x, y))
+					
+					# No longer adding to obstacle_sprites so player can walk through to transition
+					Tile((x, y), [], 'invisible', pygame.Surface((self.t_width, self.t_height), pygame.SRCALPHA))
 
 
 				if col == 'p':
 					if not hasattr(self, 'player'):
 						self.player = Player((x,y),[self.visible_sprites],self.obstacle_sprites,self.create_attack,self.destroy_attack)
+						self.player.create_magic = self.create_magic
 					else:
 						self.player.hitbox.center = (x,y)
 						self.player.rect.center = self.player.hitbox.center
@@ -86,14 +112,28 @@ class Level:
 			self.player.rect.center = self.player.hitbox.center
 
 	def check_map_transition(self):
-		if self.current_map == 'main':
-			# Switch to second map if going right into the gate
+		if self.current_map == 'first':
+			# Map 1 -> Map 2 (Right)
 			if self.player.hitbox.centerx > self.map_width - 40:
 				self.switch_map('second', spawn_pos = (80, self.player.hitbox.centery))
 		elif self.current_map == 'second':
-			# Switch back to main map if going left
+			# Map 2 -> Map 1 (Left)
 			if self.player.hitbox.centerx < 40:
-				self.switch_map('main', spawn_pos = (self.map_width - 80, self.player.hitbox.centery))
+				self.switch_map('first', spawn_pos = (self.map_width - 80, self.player.hitbox.centery))
+			# Map 2 -> Map 3 (Right)
+			elif self.player.hitbox.centerx > self.map_width - 40:
+				self.switch_map('third', spawn_pos = (80, self.player.hitbox.centery))
+		elif self.current_map == 'third':
+			# Map 3 -> Map 2 (Left)
+			if self.player.hitbox.centerx < 40:
+				self.switch_map('second', spawn_pos = (self.map_width - 80, self.player.hitbox.centery))
+			# Map 3 -> Map 4 (Right)
+			elif self.player.hitbox.centerx > self.map_width - 40:
+				self.switch_map('fourth', spawn_pos = (80, self.player.hitbox.centery))
+		elif self.current_map == 'fourth':
+			# Map 4 -> Map 3 (Left)
+			if self.player.hitbox.centerx < 40:
+				self.switch_map('third', spawn_pos = (self.map_width - 80, self.player.hitbox.centery))
 
 	def create_attack(self):
 		self.current_attack = Weapon(self.player,[self.visible_sprites])
@@ -103,12 +143,16 @@ class Level:
 			self.current_attack.kill()
 		self.current_attack = None
 
+	def create_magic(self,style,strength,cost):
+		if style == 'heal':
+			self.magic_player.heal(self.player,strength,cost,[self.visible_sprites])
+
 	def run(self):
 		# update and draw the game
 		self.visible_sprites.custom_draw(self.player)
 		self.visible_sprites.update()
 		self.check_map_transition()
-		self.ui.display(self.player)
+		self.ui.display(self.player, MAPS[self.current_map]['index'])
 
 class YSortCameraGroup(pygame.sprite.Group):
 	def __init__(self):
@@ -121,6 +165,10 @@ class YSortCameraGroup(pygame.sprite.Group):
 		self.offset = pygame.math.Vector2()
 		self.floor_surf = None
 		self.floor_rect = None
+
+	def update_floor_from_surf(self, surf):
+		self.floor_surf = surf.copy()
+		self.floor_rect = self.floor_surf.get_rect(topleft = (0,0))
 
 	def update_floor(self, path, size):
 		self.floor_surf = pygame.image.load(path).convert()
@@ -148,5 +196,9 @@ class YSortCameraGroup(pygame.sprite.Group):
 
 		# sorting sprites for depth effect
 		for sprite in sorted(self.sprites(),key = lambda sprite: sprite.hitbox.centery):
+			# draw ghosts for player
+			if hasattr(sprite, 'draw_ghosts'):
+				sprite.draw_ghosts(self.display_surface, self.offset)
+
 			offset_pos = sprite.rect.topleft - self.offset
 			self.display_surface.blit(sprite.image,offset_pos)

@@ -12,7 +12,7 @@ class Weapon(pygame.sprite.Sprite):
 		self.image = remove_background_floodfill(self.image, threshold = 40)
 		
 		# scale 
-		self.image = pygame.transform.scale_by(self.image, 0.7)
+		self.image = pygame.transform.scale_by(self.image, 0.84)
 		
 		# placement
 		if direction == 'right':
