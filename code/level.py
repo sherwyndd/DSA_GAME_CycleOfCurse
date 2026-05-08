@@ -22,6 +22,7 @@ class Level:
 		# attack sprites
 		self.current_attack = None
 		self.attack_sprites = pygame.sprite.Group()
+		self.enemy_attack_sprites = pygame.sprite.Group()
 		self.attackable_sprites = pygame.sprite.Group()
 
 		# background setup - now handled in create_map
@@ -133,6 +134,11 @@ class Level:
 		else:
 			self.total_monsters = 0
 
+		# Spawn boss on first map
+		if self.current_map == 'first':
+			Enemy('boss', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites], self.obstacle_sprites, self.damage_player, self.create_enemy_attack, self.destroy_enemy_attack)
+			self.total_monsters += 1
+
 	def switch_map(self, new_map, spawn_pos = None):
 		print(f"Switching to {new_map} at {spawn_pos}")
 		# clear all sprites
@@ -194,6 +200,13 @@ class Level:
 		if style == 'heal':
 			self.magic_player.heal(self.player,strength,cost,[self.visible_sprites])
 
+	def create_enemy_attack(self, enemy):
+		Weapon(enemy, [self.visible_sprites, self.enemy_attack_sprites])
+
+	def destroy_enemy_attack(self, enemy):
+		for sprite in self.enemy_attack_sprites:
+			sprite.kill()
+
 	def player_attack_logic(self):
 		if self.attack_sprites:
 			for attack_sprite in self.attack_sprites:
@@ -202,10 +215,20 @@ class Level:
 					for target_sprite in collision_sprites:
 						target_sprite.get_damage(self.player,attack_sprite.sprite_type)
 
+	def enemy_attack_logic(self):
+		if self.enemy_attack_sprites:
+			for attack_sprite in self.enemy_attack_sprites:
+				if attack_sprite.rect.colliderect(self.player.hitbox):
+					self.damage_player(attack_sprite.owner.attack_damage, 'weapon')
+					# To prevent multiple hits per attack, we rely on player's invincibility duration
+
 	def damage_player(self,amount,attack_type):
 		if self.player.vulnerable:
-			self.player.health -= amount
-			self.player.target_health -= amount
+			actual_damage = amount - self.player.armor
+			if actual_damage < 0: actual_damage = 0
+			
+			self.player.health -= actual_damage
+			self.player.target_health -= actual_damage
 			if self.player.health < 0: self.player.health = 0
 			if self.player.target_health < 0: self.player.target_health = 0
 			
@@ -237,6 +260,7 @@ class Level:
 		self.visible_sprites.update()
 		self.visible_sprites.enemy_update(self.player)
 		self.player_attack_logic()
+		self.enemy_attack_logic()
 		self.update_gate_state()
 		self.check_map_transition()
 		self.ui.display(self.player, MAPS[self.current_map]['index'], self.current_monsters, self.total_monsters)

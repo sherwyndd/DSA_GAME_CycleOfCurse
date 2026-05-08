@@ -72,10 +72,10 @@ class Player(Entity):
 		self.magic_cooldown_time = 0
 
 		# stats
-		self.stats = {'health': 100,'energy':60,'attack': 10,'magic': 4,'speed': 5}
-		self.health = 50
+		self.stats = {'health': 100,'armor':10,'attack': 10,'magic': 4,'speed': 5}
+		self.health = 100
 		self.target_health = self.health
-		self.energy = self.stats['energy'] * 1
+		self.armor = 1
 		self.exp = 1
 
 		# ghost effect (Linked List)

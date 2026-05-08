@@ -16,7 +16,7 @@ WEAPON_INDEX = 0
 # ui 
 BAR_HEIGHT = 20
 HEALTH_BAR_WIDTH = 200
-ENERGY_BAR_WIDTH = 140
+ARMOR_BAR_WIDTH = 200
 MONSTER_BAR_WIDTH = 300
 ITEM_BOX_SIZE = 80
 UI_FONT = '../graphics/font/joystix.ttf'
@@ -30,7 +30,7 @@ TEXT_COLOR = '#EEEEEE'
 
 # ui colors
 HEALTH_COLOR = 'red'
-ENERGY_COLOR = 'blue'
+ARMOR_COLOR = '#888888' # Gray
 MONSTER_COLOR = '#8e44ad' # Purple
 UI_BORDER_COLOR_ACTIVE = 'gold'
 
@@ -55,10 +55,10 @@ WORLD_MAP_1 = [
 	['x',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','x'],
 	['x','h',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','h','x'],
 	['x',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','x'],
+	['x','p',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','x'],
 	['x',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','x'],
 	['x',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','x'],
-	['x',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','x'],
-	['x','x',' ',' ',' ',' ',' ',' ',' ',' ',' ','p',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','x','x'],
+	['x','x',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','x','x'],
 	['x','x',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','x','x'],
 	['x',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','x'],
 	['x',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','x'],
@@ -108,7 +108,8 @@ WORLD_MAP_3 = [
 
 # enemy
 monster_data = {
-	'spirit': {'health': 100,'exp':110,'damage':8,'attack_type': 'thunder', 'attack_sound':'../audio/attack/fireball.wav', 'speed': 2, 'resistance': 3, 'attack_radius': 60, 'notice_radius': 350}
+	'spirit': {'health': 100,'exp':110,'damage':8,'attack_type': 'thunder', 'attack_sound':'../audio/attack/fireball.wav', 'speed': 2, 'resistance': 3, 'attack_radius': 60, 'notice_radius': 350},
+	'boss': {'health': 500,'exp':1000,'damage':25,'attack_type': 'axe', 'attack_sound':'../audio/attack/slash.wav', 'speed': 1.5, 'resistance': 0.1, 'attack_radius': 70, 'notice_radius': 400}
 }
 
 MAPS = {

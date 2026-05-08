@@ -11,7 +11,7 @@ class UI:
 
 		# bar setup 
 		self.health_bar_rect = pygame.Rect(10,10,HEALTH_BAR_WIDTH,BAR_HEIGHT)
-		self.energy_bar_rect = pygame.Rect(10,34,ENERGY_BAR_WIDTH,BAR_HEIGHT)
+		self.armor_bar_rect = pygame.Rect(10,34,ARMOR_BAR_WIDTH,BAR_HEIGHT)
 		self.monster_bar_rect = pygame.Rect(WIDTH // 2 - MONSTER_BAR_WIDTH // 2, 10, MONSTER_BAR_WIDTH, BAR_HEIGHT)
 
 		# convert weapon dictionary
@@ -58,6 +58,22 @@ class UI:
 		if current_width > 0:
 			pygame.draw.rect(self.display_surface,color,current_rect, border_radius = border_radius)
 		pygame.draw.rect(self.display_surface,UI_BORDER_COLOR,bg_rect,3, border_radius = border_radius)
+
+	def show_armor_bar(self, current, max_amount, bg_rect, color, border_radius = 5):
+		# No background or border drawn here, just the colored rectangle of current width
+		if max_amount > 0:
+			ratio = current / max_amount
+		else:
+			ratio = 0
+		
+		current_width = bg_rect.width * ratio
+		current_rect = bg_rect.copy()
+		current_rect.width = current_width
+
+		if current_width > 0:
+			pygame.draw.rect(self.display_surface,color,current_rect, border_radius = border_radius)
+			# Optional: very thin border or just leave it as is
+			pygame.draw.rect(self.display_surface,UI_BORDER_COLOR,current_rect,1, border_radius = border_radius)
 
 	def show_monster_count(self, current, total):
 		if total > 0:
@@ -108,7 +124,7 @@ class UI:
 
 	def display(self,player,map_index, monster_count, total_monsters):
 		self.show_bar(player.health,player.stats['health'],self.health_bar_rect,HEALTH_COLOR, player.target_health)
-		self.show_bar(player.energy,player.stats['energy'],self.energy_bar_rect,ENERGY_COLOR)
+		self.show_armor_bar(player.armor,player.stats['armor'],self.armor_bar_rect,ARMOR_COLOR)
 		self.show_monster_count(monster_count, total_monsters)
 
 		self.show_map_index(map_index)

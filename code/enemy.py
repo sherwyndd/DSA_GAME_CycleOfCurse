@@ -1,11 +1,12 @@
 import pygame
 import random
+import math
 from settings import *
 from entity import Entity
 from support import *
 
 class Enemy(Entity):
-	def __init__(self, monster_name, pos, groups, obstacle_sprites, damage_player):
+	def __init__(self, monster_name, pos, groups, obstacle_sprites, damage_player, create_attack = None, destroy_attack = None):
 		# general setup
 		super().__init__(groups)
 		self.sprite_type = 'enemy'
@@ -38,12 +39,45 @@ class Enemy(Entity):
 		self.attack_cooldown = 400
 		self.damage_player = damage_player
 
-		# invincibility timer
 		self.vulnerable = True
 		self.hit_time = None
 		self.invincibility_duration = 300
 
+		# attack
+		self.can_attack = True
+		self.spawn_time = pygame.time.get_ticks()
+		self.attack_delay = 750
+
+		# boss attack setup
+		self.create_attack = create_attack
+		self.destroy_attack = destroy_attack
+		self.attacking = False
+		self.attack_duration = 250
+		self.attack_cooldown_duration = 800
+		self.attack_cooldown_time = 0
+		if self.monster_name == 'boss':
+			self.weapon = 'axe'
+
 	def import_graphics(self, name):
+		if name == 'boss':
+			self.animations = {
+				'idle': [], 'move': [], 'attack': [],
+				'up_idle': [], 'down_idle': [], 'left_idle': [], 'right_idle': [],
+				'up_move': [], 'down_move': [], 'left_move': [], 'right_move': [],
+				'up_attack': [], 'down_attack': [], 'left_attack': [], 'right_attack': []
+			}
+			path = f'../graphics/cursed_spirits/boss-round-1.png'
+			surf = pygame.image.load(path).convert_alpha()
+			surf = remove_background_floodfill(surf, threshold = 40)
+			surf = pygame.transform.scale_by(surf, 0.48) # Boss is 1.2x larger than previous (0.4 * 1.2)
+			
+			flipped_surf = pygame.transform.flip(surf, True, False)
+			
+			for key in self.animations.keys():
+				if 'left' in key: self.animations[key] = [flipped_surf]
+				else: self.animations[key] = [surf]
+			return
+
 		self.animations = {'idle':[], 'move':[], 'attack':[]}
 		main_path = f'../graphics/monsters/{name}/'
 		for animation in self.animations.keys():
@@ -82,21 +116,64 @@ class Enemy(Entity):
 
 	def get_status(self, player):
 		distance = self.get_player_distance_direction(player)[0]
+		current_time = pygame.time.get_ticks()
+
+		# Check for initial delay
+		if current_time - self.spawn_time < self.attack_delay:
+			self.status = 'idle'
+			return
+
+		if self.attacking:
+			if '_attack' not in self.status:
+				if self.monster_name == 'boss':
+					# Maintain previous attack direction status
+					pass
+				else:
+					self.status = 'attack'
+			return
 
 		if distance <= self.attack_radius and self.can_attack:
-			if self.status != 'attack':
+			if 'attack' not in self.status:
 				self.frame_index = 0
-			self.status = 'attack'
+				# Determine direction for boss attack
+				if self.monster_name == 'boss':
+					direction = self.get_player_distance_direction(player)[1]
+					if abs(direction.x) > abs(direction.y):
+						self.status = 'right_attack' if direction.x > 0 else 'left_attack'
+					else:
+						self.status = 'down_attack' if direction.y > 0 else 'up_attack'
+					
+					# Start attack sequence like player
+					self.attacking = True
+					self.attack_time = pygame.time.get_ticks()
+					if self.create_attack:
+						self.create_attack(self)
+				else:
+					self.status = 'attack'
+					self.attacking = True
+					self.attack_time = pygame.time.get_ticks()
+					self.damage_player(self.attack_damage, self.attack_type)
+					
 		elif distance <= self.notice_radius:
-			self.status = 'move'
+			if self.monster_name == 'boss':
+				direction = self.get_player_distance_direction(player)[1]
+				if abs(direction.x) > abs(direction.y):
+					self.status = 'right_move' if direction.x > 0 else 'left_move'
+				else:
+					self.status = 'down_move' if direction.y > 0 else 'up_move'
+			else:
+				self.status = 'move'
 		else:
-			self.status = 'idle'
+			if self.monster_name == 'boss':
+				if 'move' in self.status: self.status = self.status.replace('move', 'idle')
+				elif 'attack' not in self.status: self.status = 'down_idle'
+			else:
+				self.status = 'idle'
 
 	def actions(self, player):
-		if self.status == 'attack':
-			self.attack_time = pygame.time.get_ticks()
-			self.damage_player(self.attack_damage, self.attack_type)
-		elif self.status == 'move':
+		if self.attacking:
+			self.direction = pygame.math.Vector2()
+		elif 'move' in self.status:
 			self.direction = self.get_player_distance_direction(player)[1]
 		else:
 			self.direction = pygame.math.Vector2()
@@ -106,11 +183,15 @@ class Enemy(Entity):
 		
 		self.frame_index += self.animation_speed
 		if self.frame_index >= len(animation):
-			if self.status == 'attack':
-				self.can_attack = False
 			self.frame_index = 0
 
 		self.image = animation[int(self.frame_index)]
+		
+		# Boss movement effect: Squash and Stretch bobbing
+		if self.monster_name == 'boss' and 'move' in self.status:
+			bob = math.sin(pygame.time.get_ticks() * 0.015) * 0.05
+			self.image = pygame.transform.scale_by(self.image, (1.0 + bob, 1.0 - bob))
+
 		self.rect = self.image.get_rect(center = self.hitbox.center)
 
 		if not self.vulnerable:
@@ -121,8 +202,17 @@ class Enemy(Entity):
 
 	def cooldowns(self):
 		current_time = pygame.time.get_ticks()
+		
+		if self.attacking:
+			if current_time - self.attack_time >= self.attack_duration:
+				self.attacking = False
+				if self.monster_name == 'boss' and self.destroy_attack:
+					self.destroy_attack(self)
+				self.can_attack = False
+				self.attack_cooldown_time = current_time
+
 		if not self.can_attack:
-			if current_time - self.attack_time >= self.attack_cooldown:
+			if current_time - self.attack_cooldown_time >= self.attack_cooldown_duration:
 				self.can_attack = True
 
 		if not self.vulnerable:
@@ -142,6 +232,8 @@ class Enemy(Entity):
 
 	def check_death(self):
 		if self.health <= 0:
+			if self.monster_name == 'boss' and self.destroy_attack:
+				self.destroy_attack(self)
 			self.kill()
 
 	def hit_reaction(self):
