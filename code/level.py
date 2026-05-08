@@ -1,7 +1,9 @@
 import pygame 
+import random
 from settings import *
 from tile import Tile
 from player import Player
+from enemy import Enemy
 from weapon import Weapon
 from ui import UI
 from magic import MagicPlayer
@@ -19,6 +21,8 @@ class Level:
 
 		# attack sprites
 		self.current_attack = None
+		self.attack_sprites = pygame.sprite.Group()
+		self.attackable_sprites = pygame.sprite.Group()
 
 		# background setup - now handled in create_map
 		# self.full_bg_surf = pygame.image.load('../graphics/background4.png').convert_alpha()
@@ -34,6 +38,14 @@ class Level:
 			surf = pygame.image.load(path).convert()
 			surf = pygame.transform.scale(surf, size)
 			self.bg_cache[map_name] = surf
+
+		# monster tracking
+		self.total_monsters = 0
+		self.current_monsters = 0
+
+		# gate management
+		self.gate_sprites = pygame.sprite.Group()
+		self.entrance_gates = pygame.sprite.Group()
 
 		self.create_map()
 		
@@ -56,10 +68,34 @@ class Level:
 		# update floor in camera group
 		self.visible_sprites.update_floor_from_surf(self.bg_cache[self.current_map])
 
+		# reset counts and groups
+		self.total_monsters = 0
+		self.gate_sprites.empty()
+		self.entrance_gates.empty()
+
 		for row_index,row in enumerate(layout):
 			for col_index, col in enumerate(row):
 				x = col_index * self.t_width
 				y = row_index * self.t_height
+
+				if (row_index, col_index) in map_data.get('gates', []):
+					# This is a gate position
+					# 1. 'Open' state: Copy floor from neighbor
+					neighbor_col = col_index - 1 if col_index > 0 else col_index + 1
+					neighbor_x = neighbor_col * self.t_width
+					open_surf = pygame.Surface((self.t_width, self.t_height))
+					open_surf.blit(self.visible_sprites.floor_surf, (0, 0), pygame.Rect(neighbor_x, y, self.t_width, self.t_height))
+					open_surf = pygame.transform.flip(open_surf, True, False)
+					
+					# 2. 'Closed' state: Use original background at this position
+					closed_surf = pygame.Surface((self.t_width, self.t_height))
+					closed_surf.blit(self.visible_sprites.floor_surf, (0, 0), pygame.Rect(x, y, self.t_width, self.t_height))
+					
+					# Create the gate tile (collision only, not in visible_sprites)
+					gate_tile = Tile((x, y), [self.obstacle_sprites, self.gate_sprites], 'gate', closed_surf)
+					gate_tile.closed_surf = closed_surf
+					gate_tile.open_surf = open_surf
+					continue
 
 				if col == 'h' or col == 'x':
 					if col == 'h':
@@ -72,22 +108,6 @@ class Level:
 						tile_surf.blit(self.visible_sprites.floor_surf, (0, 0), pygame.Rect(x, y, self.t_width, self.t_height))
 						Tile((x, y), [self.visible_sprites, self.obstacle_sprites], 'invisible', tile_surf)
 
-				if col == 'g':
-					# Determine neighbor for seamless transition
-					neighbor_col = col_index - 1 if col_index > 0 else col_index + 1
-					neighbor_x = neighbor_col * self.t_width
-					
-					# Copy floor from neighbor, flip it, and blit onto current floor
-					gate_surf = pygame.Surface((self.t_width, self.t_height))
-					gate_surf.blit(self.visible_sprites.floor_surf, (0, 0), pygame.Rect(neighbor_x, y, self.t_width, self.t_height))
-					gate_surf = pygame.transform.flip(gate_surf, True, False)
-					
-					self.visible_sprites.floor_surf.blit(gate_surf, (x, y))
-					
-					# No longer adding to obstacle_sprites so player can walk through to transition
-					Tile((x, y), [], 'invisible', pygame.Surface((self.t_width, self.t_height), pygame.SRCALPHA))
-
-
 				if col == 'p':
 					if not hasattr(self, 'player'):
 						self.player = Player((x,y),[self.visible_sprites],self.obstacle_sprites,self.create_attack,self.destroy_attack)
@@ -95,6 +115,23 @@ class Level:
 					else:
 						self.player.hitbox.center = (x,y)
 						self.player.rect.center = self.player.hitbox.center
+
+		# Spawn spirits randomly
+		empty_tiles = []
+		for row_index, row in enumerate(layout):
+			for col_index, col in enumerate(row):
+				if col == ' ':
+					x = col_index * self.t_width
+					y = row_index * self.t_height
+					empty_tiles.append((x, y))
+		
+		if empty_tiles:
+			spawn_count = min(5, len(empty_tiles))
+			self.total_monsters = spawn_count
+			for pos in random.sample(empty_tiles, spawn_count):
+				Enemy('spirit', pos, [self.visible_sprites, self.attackable_sprites], self.obstacle_sprites, self.damage_player)
+		else:
+			self.total_monsters = 0
 
 	def switch_map(self, new_map, spawn_pos = None):
 		print(f"Switching to {new_map} at {spawn_pos}")
@@ -110,6 +147,16 @@ class Level:
 		if spawn_pos:
 			self.player.hitbox.center = spawn_pos
 			self.player.rect.center = self.player.hitbox.center
+			
+			# Identify and close entrance gates permanently
+			for gate in self.gate_sprites:
+				# If gate is close to the spawn position horizontally, it's an entrance
+				if abs(gate.rect.centerx - spawn_pos[0]) < 200:
+					self.entrance_gates.add(gate)
+					self.gate_sprites.remove(gate)
+					# Keep the original background (fence) visual on the floor
+					self.visible_sprites.floor_surf.blit(gate.closed_surf, gate.rect.topleft)
+					# Keep it in obstacle_sprites forever
 
 	def check_map_transition(self):
 		if self.current_map == 'first':
@@ -136,7 +183,7 @@ class Level:
 				self.switch_map('third', spawn_pos = (self.map_width - 80, self.player.hitbox.centery))
 
 	def create_attack(self):
-		self.current_attack = Weapon(self.player,[self.visible_sprites])
+		self.current_attack = Weapon(self.player,[self.visible_sprites, self.attack_sprites])
 
 	def destroy_attack(self):
 		if self.current_attack:
@@ -147,12 +194,52 @@ class Level:
 		if style == 'heal':
 			self.magic_player.heal(self.player,strength,cost,[self.visible_sprites])
 
+	def player_attack_logic(self):
+		if self.attack_sprites:
+			for attack_sprite in self.attack_sprites:
+				collision_sprites = pygame.sprite.spritecollide(attack_sprite,self.attackable_sprites,False)
+				if collision_sprites:
+					for target_sprite in collision_sprites:
+						target_sprite.get_damage(self.player,attack_sprite.sprite_type)
+
+	def damage_player(self,amount,attack_type):
+		if self.player.vulnerable:
+			self.player.health -= amount
+			self.player.target_health -= amount
+			if self.player.health < 0: self.player.health = 0
+			if self.player.target_health < 0: self.player.target_health = 0
+			
+			self.player.vulnerable = False
+			self.player.hurt_time = pygame.time.get_ticks()
+			# spawn particles or play sounds here
+
+	def update_gate_state(self):
+		self.current_monsters = len(self.attackable_sprites)
+		
+		# Regular gates (not entrance gates)
+		for gate in self.gate_sprites:
+			if self.current_monsters == 0:
+				# Win condition: show "open" floor and make it passable
+				if gate in self.obstacle_sprites:
+					self.obstacle_sprites.remove(gate)
+					# Update floor visual
+					self.visible_sprites.floor_surf.blit(gate.open_surf, gate.rect.topleft)
+			else:
+				# Still have monsters: show original background (fence) and block
+				if gate not in self.obstacle_sprites:
+					self.obstacle_sprites.add(gate)
+					# Restore floor visual
+					self.visible_sprites.floor_surf.blit(gate.closed_surf, gate.rect.topleft)
+
 	def run(self):
 		# update and draw the game
 		self.visible_sprites.custom_draw(self.player)
 		self.visible_sprites.update()
+		self.visible_sprites.enemy_update(self.player)
+		self.player_attack_logic()
+		self.update_gate_state()
 		self.check_map_transition()
-		self.ui.display(self.player, MAPS[self.current_map]['index'])
+		self.ui.display(self.player, MAPS[self.current_map]['index'], self.current_monsters, self.total_monsters)
 
 class YSortCameraGroup(pygame.sprite.Group):
 	def __init__(self):
@@ -202,3 +289,8 @@ class YSortCameraGroup(pygame.sprite.Group):
 
 			offset_pos = sprite.rect.topleft - self.offset
 			self.display_surface.blit(sprite.image,offset_pos)
+
+	def enemy_update(self,player):
+		enemy_sprites = [sprite for sprite in self.sprites() if hasattr(sprite,'sprite_type') and sprite.sprite_type == 'enemy']
+		for enemy in enemy_sprites:
+			enemy.enemy_update(player)

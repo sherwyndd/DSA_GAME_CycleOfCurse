@@ -3,6 +3,7 @@ import os
 import math
 from settings import *
 from support import *
+from entity import Entity
 
 class GhostNode:
 	def __init__(self, surf, rect, alpha):
@@ -11,7 +12,7 @@ class GhostNode:
 		self.alpha = alpha
 		self.next = None
 
-class Player(pygame.sprite.Sprite):
+class Player(Entity):
 	def __init__(self,pos,groups,obstacle_sprites,create_attack,destroy_attack):
 		super().__init__(groups)
 		
@@ -81,6 +82,11 @@ class Player(pygame.sprite.Sprite):
 		self.ghost_head = None # Head of our Linked List
 		self.ghost_timer = 0
 		self.ghost_frequency = 5 # Create a ghost every 5 frames
+
+		# damage timer
+		self.vulnerable = True
+		self.hurt_time = None
+		self.invulnerability_duration = 500
 
 	# Flood fill moved to support.py
 
@@ -268,6 +274,10 @@ class Player(pygame.sprite.Sprite):
 			if current_time - self.magic_cooldown_time >= self.magic_cooldown_duration:
 				self.can_cast_magic = True
 
+		if not self.vulnerable:
+			if current_time - self.hurt_time >= self.invulnerability_duration:
+				self.vulnerable = True
+
 	def animate(self):
 		base_status = self.status.split('_')[0]
 		if base_status in ['attack', 'dash']: base_status = 'down'
@@ -289,6 +299,13 @@ class Player(pygame.sprite.Sprite):
 
 		self.image = image
 		self.rect = self.image.get_rect(center = self.hitbox.center)
+
+		# flicker 
+		if not self.vulnerable:
+			alpha = self.wave_value()
+			self.image.set_alpha(alpha)
+		else:
+			self.image.set_alpha(255)
 
 	def update_ghosts(self):
 		# 1. Thêm bóng ma mới (Chỉ khi đang lướt - DASH)
@@ -328,6 +345,10 @@ class Player(pygame.sprite.Sprite):
 			surface.blit(current.surf, offset_pos)
 			current = current.next
 
+	def get_full_weapon_damage(self):
+		base_damage = self.stats['attack']
+		weapon_damage = weapon_data[self.weapon]['damage']
+		return base_damage + weapon_damage
 
 	def update(self):
 		self.get_movement_input()

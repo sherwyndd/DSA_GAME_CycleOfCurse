@@ -12,6 +12,7 @@ class UI:
 		# bar setup 
 		self.health_bar_rect = pygame.Rect(10,10,HEALTH_BAR_WIDTH,BAR_HEIGHT)
 		self.energy_bar_rect = pygame.Rect(10,34,ENERGY_BAR_WIDTH,BAR_HEIGHT)
+		self.monster_bar_rect = pygame.Rect(WIDTH // 2 - MONSTER_BAR_WIDTH // 2, 10, MONSTER_BAR_WIDTH, BAR_HEIGHT)
 
 		# convert weapon dictionary
 		self.weapon_graphics = []
@@ -30,9 +31,9 @@ class UI:
 			self.magic_graphics.append(magic_surf)
 
 
-	def show_bar(self,current,max_amount,bg_rect,color, target_amount = None):
+	def show_bar(self,current,max_amount,bg_rect,color, target_amount = None, border_radius = 5):
 		# draw bg 
-		pygame.draw.rect(self.display_surface,UI_BG_COLOR,bg_rect)
+		pygame.draw.rect(self.display_surface,UI_BG_COLOR,bg_rect, border_radius = border_radius)
 
 		# drawing target/faint bar
 		if target_amount and target_amount > current:
@@ -42,17 +43,30 @@ class UI:
 			target_rect.width = target_width
 			# Faint color (e.g., darker red for health)
 			faint_color = '#770000' if color == HEALTH_COLOR else color
-			pygame.draw.rect(self.display_surface,faint_color,target_rect)
+			pygame.draw.rect(self.display_surface,faint_color,target_rect, border_radius = border_radius)
 
 		# converting stat to pixel
-		ratio = current / max_amount
+		if max_amount > 0:
+			ratio = current / max_amount
+		else:
+			ratio = 0
 		current_width = bg_rect.width * ratio
 		current_rect = bg_rect.copy()
 		current_rect.width = current_width
 
 		# drawing the bar
-		pygame.draw.rect(self.display_surface,color,current_rect)
-		pygame.draw.rect(self.display_surface,UI_BORDER_COLOR,bg_rect,3)
+		if current_width > 0:
+			pygame.draw.rect(self.display_surface,color,current_rect, border_radius = border_radius)
+		pygame.draw.rect(self.display_surface,UI_BORDER_COLOR,bg_rect,3, border_radius = border_radius)
+
+	def show_monster_count(self, current, total):
+		if total > 0:
+			self.show_bar(current, total, self.monster_bar_rect, MONSTER_COLOR, border_radius = 10)
+			
+			# Add text for monster count
+			text_surf = self.font.render(f'{current}/{total}', False, TEXT_COLOR)
+			text_rect = text_surf.get_rect(center = self.monster_bar_rect.center)
+			self.display_surface.blit(text_surf, text_rect)
 
 	def show_map_index(self,index):
 		text_surf = self.font.render(f'MAP: {index}',False,TEXT_COLOR)
@@ -92,9 +106,10 @@ class UI:
 		self.display_surface.blit(magic_surf,magic_rect)
 		self.show_key_label('Z', bg_rect)
 
-	def display(self,player,map_index):
+	def display(self,player,map_index, monster_count, total_monsters):
 		self.show_bar(player.health,player.stats['health'],self.health_bar_rect,HEALTH_COLOR, player.target_health)
 		self.show_bar(player.energy,player.stats['energy'],self.energy_bar_rect,ENERGY_COLOR)
+		self.show_monster_count(monster_count, total_monsters)
 
 		self.show_map_index(map_index)
 
