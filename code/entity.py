@@ -16,6 +16,13 @@ class Entity(pygame.sprite.Sprite):
 		self.collision('horizontal')
 		self.hitbox.y += self.direction.y * speed
 		self.collision('vertical')
+		
+		# Map boundary clamping (1224x711)
+		if self.hitbox.left < 0: self.hitbox.left = 0
+		if self.hitbox.right > 1224: self.hitbox.right = 1224
+		if self.hitbox.top < 0: self.hitbox.top = 0
+		if self.hitbox.bottom > 711: self.hitbox.bottom = 711
+		
 		self.rect.center = self.hitbox.center
 
 	def collision(self,direction):

@@ -13,6 +13,8 @@ class AnimationPlayer:
 			'spirit':   self.tint_frames(self.scale_frames(smoke_frames, 1.0), (255, 50, 50, 255)),   # Red
 			'slime':    self.tint_frames(self.scale_frames(smoke_frames, 1.0), (0, 200, 255, 255)),   # Cyan
 			'boss':     self.tint_frames(self.scale_frames(smoke_frames, 2.5), (150, 150, 150, 255)), # Gray
+			'slash':    self.scale_frames(import_folder('../graphics/particles/slash'), 1.0),
+			'frog_hit': self.tint_frames(self.scale_frames(smoke_frames, 0.7), (50, 180, 50, 200)), # Green mud/slime hit
 		}
 
 	def scale_frames(self, frames, scale):
@@ -41,8 +43,8 @@ class AnimationPlayer:
 	def create_particles(self, animation_type, pos, groups, pos_type='center'):
 		if animation_type in self.frames:
 			animation_frames = self.frames[animation_type]
-			# frozen effect plays slowly: 4 frames over ~1 second (4/60 ≈ 0.0667 per tick)
-			speed = 4 / 60 if animation_type == 'frozen' else 0.15
+			# frozen effect plays in 0.5s: 4 frames over 30 ticks (4/30 ≈ 0.133 per tick)
+			speed = 4 / 30 if animation_type == 'frozen' else 0.15
 			ParticleEffect(pos, animation_frames, groups, animation_speed=speed, pos_type=pos_type)
 
 

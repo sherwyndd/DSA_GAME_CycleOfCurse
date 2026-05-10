@@ -30,6 +30,19 @@ class UI:
 			magic_surf = pygame.transform.scale(magic_surf, (50, 50))
 			self.magic_graphics.append(magic_surf)
 
+		# Effect icons
+		self.anti_heal_icon = pygame.image.load('../graphics/potion_antiheal.png').convert_alpha()
+		self.anti_heal_icon = remove_background_floodfill(self.anti_heal_icon, threshold=40)
+		self.anti_heal_icon = pygame.transform.scale(self.anti_heal_icon, (30, 30))
+		# Tint it green
+		green_surf = pygame.Surface(self.anti_heal_icon.get_size()).convert_alpha()
+		green_surf.fill((0, 255, 0, 150))
+		self.anti_heal_icon.blit(green_surf, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+
+		self.ice_icon = pygame.image.load('../graphics/ice_icon.png').convert_alpha()
+		self.ice_icon = remove_background_floodfill(self.ice_icon, threshold=40)
+		self.ice_icon = pygame.transform.scale(self.ice_icon, (30, 30))
+
 
 	def show_bar(self,current,max_amount,bg_rect,color, target_amount = None, border_radius = 5):
 		# draw bg 
@@ -167,6 +180,23 @@ class UI:
 
 		self.weapon_overlay(player.weapon,not player.can_switch_weapon)
 		self.magic_overlay(player.magic_index,not player.can_switch_magic,player)
+
+		# Effect icons preview (Small box at top-left of weapon box)
+		if player.weapon in ('sword', 'axe'):
+			# Box dimensions
+			box_size = 34
+			# Flush against the top-left corner of the weapon box (10, 610)
+			box_rect = pygame.Rect(10, 610 - box_size, box_size, box_size)
+			
+			pygame.draw.rect(self.display_surface, UI_BG_COLOR, box_rect)
+			pygame.draw.rect(self.display_surface, UI_BORDER_COLOR, box_rect, 2)
+			
+			if player.weapon == 'sword':
+				icon_rect = self.anti_heal_icon.get_rect(center = box_rect.center)
+				self.display_surface.blit(self.anti_heal_icon, icon_rect)
+			elif player.weapon == 'axe':
+				icon_rect = self.ice_icon.get_rect(center = box_rect.center)
+				self.display_surface.blit(self.ice_icon, icon_rect)
 
 	def show_game_over(self, selection):
 		overlay = pygame.Surface((WIDTH, HEIGHT))

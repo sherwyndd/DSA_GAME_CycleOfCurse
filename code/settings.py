@@ -110,7 +110,10 @@ WORLD_MAP_3 = [
 monster_data = {
 	'spirit': {'health': 100,'damage':8,'attack_type': 'none', 'speed': 2, 'resistance': 3, 'attack_radius': 60, 'notice_radius': 350},
 	'slime': {'health': 100,'damage':8,'attack_type': 'none', 'speed': 2, 'resistance': 3, 'attack_radius': 60, 'notice_radius': 350},
-	'boss': {'health': 500,'damage':25,'attack_type': 'axe', 'speed': 1.5, 'resistance': 0.1, 'attack_radius': 70, 'notice_radius': 400}
+	'boss': {'health': 500,'damage':25,'attack_type': 'axe', 'speed': 1.5, 'resistance': 0.1, 'attack_radius': 70, 'notice_radius': 400},
+	'boss2': {'health': 600,'damage':10,'attack_type': 'sai', 'speed': 2.0, 'resistance': 0.1, 'attack_radius': 70, 'notice_radius': 400},
+	'bull': {'health': 150,'damage':20,'attack_type': 'bull', 'speed': 2.5, 'resistance': 0, 'attack_radius': 200, 'notice_radius': 400},
+	'frog': {'health': 60,'damage':2,'attack_type': 'frog', 'speed': 1.0, 'resistance': 2, 'attack_radius': 80, 'notice_radius': 400}
 }
 
 MAPS = {

@@ -29,7 +29,7 @@ class Level:
 		# self.full_bg_surf = pygame.image.load('../graphics/background4.png').convert_alpha()
 
 		# sprite setup
-		self.current_map = 'first'
+		self.current_map = 'second'
 		
 		# background cache
 		self.bg_cache = {}
@@ -123,6 +123,13 @@ class Level:
 						self.player.hitbox.center = (x,y)
 						self.player.rect.center = self.player.hitbox.center
 
+		# Ensure player is created even if 'p' isn't on the map (like in map 2)
+		if not hasattr(self, 'player'):
+			spawn_x = self.t_width * 2
+			spawn_y = self.map_height // 2
+			self.player = Player((spawn_x, spawn_y),[self.visible_sprites, self.obstacle_sprites],self.obstacle_sprites,self.create_attack,self.destroy_attack)
+			self.player.create_magic = self.create_magic
+
 		# Spawn spirits randomly
 		empty_tiles = []
 		for row_index, row in enumerate(layout):
@@ -142,7 +149,7 @@ class Level:
 						y = row_index * self.t_height + self.t_height // 2
 						empty_tiles.append((x, y))
 		
-		if empty_tiles:
+		if empty_tiles and self.current_map == 'first':
 			spawn_count = min(10, len(empty_tiles))
 			self.total_monsters = spawn_count
 			positions = random.sample(empty_tiles, spawn_count)
@@ -158,6 +165,13 @@ class Level:
 		if self.current_map == 'first':
 			Enemy('boss', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, self.create_enemy_attack, self.destroy_enemy_attack)
 			self.total_monsters += 1
+
+		# Spawn boss2 on second map
+		if self.current_map == 'second':
+			boss2 = Enemy('boss2', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, self.create_enemy_attack, self.destroy_enemy_attack)
+			self.total_monsters += 1
+			# Wire summon references (player may not exist yet — set after player init)
+			self._pending_boss2 = boss2
 
 		if self.total_monsters > 0:
 			self.reward_given = False
@@ -267,6 +281,20 @@ class Level:
 					frozen_pos = (self.player.rect.midbottom[0], self.player.rect.midbottom[1] + 20)
 					self.animation_player.create_particles('frozen', frozen_pos, [self.visible_sprites], pos_type='midbottom')
 					self.player.freeze()
+			elif attack_type == 'bull':
+				# Knockback 20px away from the SOURCE of damage (any Bull)
+				bulls = [s for s in self.visible_sprites if hasattr(s, 'variant') and s.variant == 'bull']
+				if bulls:
+					nearest_bull = sorted(bulls, key=lambda s: pygame.math.Vector2(s.rect.center).distance_to(self.player.rect.center))[0]
+					diff = (pygame.math.Vector2(self.player.rect.center) - pygame.math.Vector2(nearest_bull.rect.center))
+					if diff.magnitude() > 0:
+						self.player.knockback_vector = diff.normalize() * 20
+					else:
+						self.player.knockback_vector = pygame.math.Vector2(0, 20)
+				else:
+					self.player.knockback_vector = pygame.math.Vector2(0, 20)
+				
+				self.player.knockback_time = pygame.time.get_ticks()
 			elif attack_type != 'none':
 				self.animation_player.create_particles(attack_type, self.player.rect.center, [self.visible_sprites])
 
@@ -326,13 +354,13 @@ class Level:
 		self.player.health = self.player.stats['health']
 		self.player.target_health = self.player.health
 		self.player.potions_left = 3
-		self.player.unlocked_weapons = ['sword']
+		self.player.unlocked_weapons = ['sword', 'axe']
 		self.player.weapon_index = 0
 		self.player.weapon = self.player.unlocked_weapons[self.player.weapon_index]
 		self.player.vulnerable = True
 		self.player.frozen = False
 		self.game_over_selection = 0
-		self.switch_map('first')
+		self.switch_map('second')
 
 	def game_over_logic(self, events):
 		self.ui.show_game_over(self.game_over_selection)
@@ -360,6 +388,15 @@ class Level:
 			self.game_over_logic(events)
 			return
 
+		# Wire boss2 summon references once player is ready
+		if hasattr(self, '_pending_boss2') and self._pending_boss2 and hasattr(self, 'player'):
+			b2 = self._pending_boss2
+			b2._summon_groups  = [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites]
+			b2._summon_player  = self.player
+			b2._summon_damage  = self.damage_player
+			b2._summon_animation_player = self.animation_player
+			self._pending_boss2 = None
+
 		# update and draw the game
 		self.visible_sprites.custom_draw(self.player)
 		self.visible_sprites.update()
@@ -370,6 +407,7 @@ class Level:
 		self.check_map_transition()
 		self.ui.display(self.player, MAPS[self.current_map]['index'], self.current_monsters, self.total_monsters)
 		self.display_reward_logic(events)
+
 
 class YSortCameraGroup(pygame.sprite.Group):
 	def __init__(self):

@@ -14,7 +14,8 @@ class Weapon(pygame.sprite.Sprite):
 		self.image = remove_background_floodfill(self.image, threshold = 40)
 		
 		# scale 
-		self.scale = 1.2 if getattr(owner, 'monster_name', None) == 'boss' else 0.84
+		is_boss1 = getattr(owner, 'monster_name', None) == 'boss'
+		self.scale = 1.2 if is_boss1 else 0.84
 		self.image = pygame.transform.scale_by(self.image, self.scale)
 		
 		# placement
@@ -28,7 +29,7 @@ class Weapon(pygame.sprite.Sprite):
 		direction = self.owner.status.split('_')[0]
 		
 		# Boss offset logic: 10px further away
-		is_boss = getattr(self.owner, 'monster_name', None) == 'boss'
+		is_boss = getattr(self.owner, 'monster_name', None) in ['boss', 'boss2']
 		offset_x = 10 if is_boss else 0
 		offset_y = -10 if is_boss else 0
 

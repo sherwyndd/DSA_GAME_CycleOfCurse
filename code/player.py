@@ -45,7 +45,7 @@ class Player(Entity):
 		# weapon
 		self.create_attack = create_attack
 		self.destroy_attack = destroy_attack
-		self.unlocked_weapons = ['sword']
+		self.unlocked_weapons = ['sword', 'axe']
 		self.weapon_index = 0
 		self.weapon = self.unlocked_weapons[self.weapon_index]
 		self.can_switch_weapon = True
@@ -92,6 +92,15 @@ class Player(Entity):
 		self.frozen = False
 		self.freeze_time = 0
 		self.freeze_duration = 1000
+
+		# slow effect
+		self.is_slowed = False
+		self.slow_time = 0
+		self.slow_duration = 3000
+		# knockback
+		self.knockback_vector = pygame.math.Vector2()
+		self.knockback_duration = 150
+		self.knockback_time = 0
 
 	# Flood fill moved to support.py
 
@@ -237,10 +246,27 @@ class Player(Entity):
 			elif 'up' in self.status: lunge_vector.y = -offset
 			elif 'down' in self.status: lunge_vector.y = offset
 
+		# Primary movement and Dash lunge
 		self.hitbox.x += (self.direction.x * speed) + lunge_vector.x
 		self.collision("horizontal")
 		self.hitbox.y += (self.direction.y * speed) + lunge_vector.y
 		self.collision("vertical")
+
+		# Apply knockback
+		if pygame.time.get_ticks() - self.knockback_time < self.knockback_duration:
+			self.hitbox.x += self.knockback_vector.x
+			self.collision("horizontal")
+			self.hitbox.y += self.knockback_vector.y
+			self.collision("vertical")
+
+		# Final clamping and center update (clamping happens in Entity.move, but since we are overriding, we ensure it here or call super)
+		# Actually, Entity.move is the parent, and we just rewrote the logic here.
+		# Let's call a manual clamp to be safe since we overrode the whole move() method.
+		if self.hitbox.left < 0: self.hitbox.left = 0
+		if self.hitbox.right > 1224: self.hitbox.right = 1224
+		if self.hitbox.top < 0: self.hitbox.top = 0
+		if self.hitbox.bottom > 711: self.hitbox.bottom = 711
+
 		self.rect.center = self.hitbox.center
 
 	def collision(self,direction):
@@ -279,6 +305,10 @@ class Player(Entity):
 		if not self.can_dash:
 			if current_time - self.dash_cooldown_time >= self.dash_cooldown_duration:
 				self.can_dash = True
+
+		if self.is_slowed:
+			if current_time - self.slow_time >= self.slow_duration:
+				self.is_slowed = False
 
 		if not self.can_switch_weapon:
 			if current_time - self.weapon_switch_time >= self.switch_duration_cooldown:
@@ -390,7 +420,12 @@ class Player(Entity):
 
 	def update(self):
 		self.get_movement_input()
-		self.move(self.speed)
+		
+		# Apply slow effect to speed
+		current_speed = self.speed
+		if self.is_slowed: current_speed /= 2.0
+		self.move(current_speed)
+		
 		self.get_attack_input()
 		self.cooldowns()
 		self.get_status()
