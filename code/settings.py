@@ -108,8 +108,9 @@ WORLD_MAP_3 = [
 
 # enemy
 monster_data = {
-	'spirit': {'health': 100,'exp':110,'damage':8,'attack_type': 'thunder', 'attack_sound':'../audio/attack/fireball.wav', 'speed': 2, 'resistance': 3, 'attack_radius': 60, 'notice_radius': 350},
-	'boss': {'health': 500,'exp':1000,'damage':25,'attack_type': 'axe', 'attack_sound':'../audio/attack/slash.wav', 'speed': 1.5, 'resistance': 0.1, 'attack_radius': 70, 'notice_radius': 400}
+	'spirit': {'health': 100,'damage':8,'attack_type': 'none', 'speed': 2, 'resistance': 3, 'attack_radius': 60, 'notice_radius': 350},
+	'slime': {'health': 100,'damage':8,'attack_type': 'none', 'speed': 2, 'resistance': 3, 'attack_radius': 60, 'notice_radius': 350},
+	'boss': {'health': 500,'damage':25,'attack_type': 'axe', 'speed': 1.5, 'resistance': 0.1, 'attack_radius': 70, 'notice_radius': 400}
 }
 
 MAPS = {

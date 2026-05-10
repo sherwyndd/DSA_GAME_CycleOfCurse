@@ -1,5 +1,4 @@
 import pygame 
-import os
 import math
 from settings import *
 from support import *
@@ -46,8 +45,9 @@ class Player(Entity):
 		# weapon
 		self.create_attack = create_attack
 		self.destroy_attack = destroy_attack
-		self.weapon_index = WEAPON_INDEX
-		self.weapon = list(weapon_data.keys())[self.weapon_index]
+		self.unlocked_weapons = ['sword']
+		self.weapon_index = 0
+		self.weapon = self.unlocked_weapons[self.weapon_index]
 		self.can_switch_weapon = True
 		self.weapon_switch_time = None
 		self.switch_duration_cooldown = 500
@@ -76,7 +76,7 @@ class Player(Entity):
 		self.health = 100
 		self.target_health = self.health
 		self.armor = 1
-		self.exp = 1
+		self.potions_left = 3
 
 		# ghost effect (Linked List)
 		self.ghost_head = None # Head of our Linked List
@@ -87,6 +87,11 @@ class Player(Entity):
 		self.vulnerable = True
 		self.hurt_time = None
 		self.invulnerability_duration = 500
+
+		# freeze effect
+		self.frozen = False
+		self.freeze_time = 0
+		self.freeze_duration = 1000
 
 	# Flood fill moved to support.py
 
@@ -142,7 +147,7 @@ class Player(Entity):
 		self.animations['attack'] = [idle_surf]; self.animations['dash'] = [idle_surf]
 
 	def get_movement_input(self):
-		if self.attacking: return
+		if self.attacking or self.frozen: return
 
 		keys = pygame.key.get_pressed()
 
@@ -156,7 +161,7 @@ class Player(Entity):
 		else: self.direction.x = 0
 
 	def get_attack_input(self):
-		if self.attacking: return
+		if self.attacking or self.frozen: return
 		keys = pygame.key.get_pressed()
 
 		# attack input
@@ -178,26 +183,35 @@ class Player(Entity):
 
 		# magic input
 		if keys[pygame.K_z] and self.can_cast_magic and self.direction.magnitude() == 0:
-			self.attacking = True
-			self.attack_type = 'magic'
-			self.attack_time = pygame.time.get_ticks()
 			style = list(magic_data.keys())[self.magic_index]
-			strength = list(magic_data.values())[self.magic_index]['strength'] + self.stats['magic']
-			cost = list(magic_data.values())[self.magic_index]['cost']
-			if self.create_magic:
-				self.create_magic(style,strength,cost)
+			
+			can_cast = True
+			if style == 'heal':
+				if self.potions_left > 0:
+					self.potions_left -= 1
+				else:
+					can_cast = False
+
+			if can_cast:
+				self.attacking = True
+				self.attack_type = 'magic'
+				self.attack_time = pygame.time.get_ticks()
+				strength = list(magic_data.values())[self.magic_index]['strength'] + self.stats['magic']
+				cost = list(magic_data.values())[self.magic_index]['cost']
+				if self.create_magic:
+					self.create_magic(style,strength,cost)
 
 		# weapon switch input
 		if keys[pygame.K_q] and self.can_switch_weapon:
 			self.can_switch_weapon = False
 			self.weapon_switch_time = pygame.time.get_ticks()
 			
-			if self.weapon_index < len(list(weapon_data.keys())) - 1:
+			if self.weapon_index < len(self.unlocked_weapons) - 1:
 				self.weapon_index += 1
 			else:
 				self.weapon_index = 0
 				
-			self.weapon = list(weapon_data.keys())[self.weapon_index]
+			self.weapon = self.unlocked_weapons[self.weapon_index]
 
 	def get_status(self):
 		if self.attacking:
@@ -232,12 +246,12 @@ class Player(Entity):
 	def collision(self,direction):
 		if direction == "horizontal":
 			for sprite in self.obstacle_sprites:
-				if sprite.hitbox.colliderect(self.hitbox):
+				if sprite is not self and sprite.hitbox.colliderect(self.hitbox):
 					if self.direction.x > 0 or 'right' in self.status: self.hitbox.right = sprite.hitbox.left
 					if self.direction.x < 0 or 'left' in self.status: self.hitbox.left = sprite.hitbox.right
 		if direction == "vertical":
 			for sprite in self.obstacle_sprites:
-				if sprite.hitbox.colliderect(self.hitbox):
+				if sprite is not self and sprite.hitbox.colliderect(self.hitbox):
 					if self.direction.y > 0 or 'down' in self.status: self.hitbox.bottom = sprite.hitbox.top
 					if self.direction.y < 0 or 'up' in self.status: self.hitbox.top = sprite.hitbox.bottom
 
@@ -277,6 +291,10 @@ class Player(Entity):
 		if not self.vulnerable:
 			if current_time - self.hurt_time >= self.invulnerability_duration:
 				self.vulnerable = True
+		
+		if self.frozen:
+			if current_time - self.freeze_time >= self.freeze_duration:
+				self.frozen = False
 
 	def animate(self):
 		base_status = self.status.split('_')[0]
@@ -298,6 +316,14 @@ class Player(Entity):
 			image = pygame.transform.rotate(image, angle)
 
 		self.image = image
+		
+		if self.frozen:
+			# Apply ice tint
+			ice_surf = pygame.Surface(self.image.get_size()).convert_alpha()
+			ice_surf.fill((100, 200, 255, 120)) # Light blue with transparency
+			self.image = self.image.copy()
+			self.image.blit(ice_surf, (0,0), special_flags = pygame.BLEND_RGBA_MULT)
+
 		self.rect = self.image.get_rect(center = self.hitbox.center)
 
 		# flicker 
@@ -349,6 +375,18 @@ class Player(Entity):
 		base_damage = self.stats['attack']
 		weapon_damage = weapon_data[self.weapon]['damage']
 		return base_damage + weapon_damage
+
+	def freeze(self):
+		self.frozen = True
+		self.freeze_time = pygame.time.get_ticks()
+		self.direction = pygame.math.Vector2()
+		if self.attacking:
+			self.attacking = False
+			if self.attack_type == 'attack':
+				try:
+					self.destroy_attack()
+				except:
+					pass
 
 	def update(self):
 		self.get_movement_input()

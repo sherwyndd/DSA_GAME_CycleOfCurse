@@ -7,7 +7,7 @@ from enemy import Enemy
 from weapon import Weapon
 from ui import UI
 from magic import MagicPlayer
-from support import remove_background_floodfill
+from particles import AnimationPlayer
 
 class Level:
 	def __init__(self):
@@ -55,6 +55,12 @@ class Level:
 
 		# magic 
 		self.magic_player = MagicPlayer(None)
+
+		# particles
+		self.animation_player = AnimationPlayer()
+		
+		# Game over
+		self.game_over_selection = 0
 
 	def create_map(self):
 		map_data = MAPS[self.current_map]
@@ -111,7 +117,7 @@ class Level:
 
 				if col == 'p':
 					if not hasattr(self, 'player'):
-						self.player = Player((x,y),[self.visible_sprites],self.obstacle_sprites,self.create_attack,self.destroy_attack)
+						self.player = Player((x,y),[self.visible_sprites, self.obstacle_sprites],self.obstacle_sprites,self.create_attack,self.destroy_attack)
 						self.player.create_magic = self.create_magic
 					else:
 						self.player.hitbox.center = (x,y)
@@ -122,22 +128,41 @@ class Level:
 		for row_index, row in enumerate(layout):
 			for col_index, col in enumerate(row):
 				if col == ' ':
-					x = col_index * self.t_width
-					y = row_index * self.t_height
-					empty_tiles.append((x, y))
+					# Ensure the tile is surrounded by empty spaces so the enemy hitbox doesn't clip into walls
+					safe = True
+					for dr in [-1, 0, 1]:
+						for dc in [-1, 0, 1]:
+							r = row_index + dr
+							c = col_index + dc
+							if 0 <= r < len(layout) and 0 <= c < len(layout[0]):
+								if layout[r][c] not in [' ', 'h']:
+									safe = False
+					if safe:
+						x = col_index * self.t_width + self.t_width // 2
+						y = row_index * self.t_height + self.t_height // 2
+						empty_tiles.append((x, y))
 		
 		if empty_tiles:
-			spawn_count = min(5, len(empty_tiles))
+			spawn_count = min(10, len(empty_tiles))
 			self.total_monsters = spawn_count
-			for pos in random.sample(empty_tiles, spawn_count):
-				Enemy('spirit', pos, [self.visible_sprites, self.attackable_sprites], self.obstacle_sprites, self.damage_player)
+			positions = random.sample(empty_tiles, spawn_count)
+			for i, pos in enumerate(positions):
+				if i < 5:
+					Enemy('slime', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles)
+				else:
+					Enemy('spirit', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles)
 		else:
 			self.total_monsters = 0
 
 		# Spawn boss on first map
 		if self.current_map == 'first':
-			Enemy('boss', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites], self.obstacle_sprites, self.damage_player, self.create_enemy_attack, self.destroy_enemy_attack)
+			Enemy('boss', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, self.create_enemy_attack, self.destroy_enemy_attack)
 			self.total_monsters += 1
+
+		if self.total_monsters > 0:
+			self.reward_given = False
+		else:
+			self.reward_given = True
 
 	def switch_map(self, new_map, spawn_pos = None):
 		print(f"Switching to {new_map} at {spawn_pos}")
@@ -145,10 +170,11 @@ class Level:
 		for sprite in self.visible_sprites:
 			if sprite != self.player: sprite.kill()
 		for sprite in self.obstacle_sprites:
-			sprite.kill()
+			if sprite != self.player: sprite.kill()
 		
 		self.current_map = new_map
 		self.create_map()
+		self.player.potions_left = 3
 		
 		if spawn_pos:
 			self.player.hitbox.center = spawn_pos
@@ -219,7 +245,8 @@ class Level:
 		if self.enemy_attack_sprites:
 			for attack_sprite in self.enemy_attack_sprites:
 				if attack_sprite.rect.colliderect(self.player.hitbox):
-					self.damage_player(attack_sprite.owner.attack_damage, 'weapon')
+					weapon_type = attack_sprite.owner.weapon if hasattr(attack_sprite.owner, 'weapon') else 'weapon'
+					self.damage_player(attack_sprite.owner.attack_damage, weapon_type)
 					# To prevent multiple hits per attack, we rely on player's invincibility duration
 
 	def damage_player(self,amount,attack_type):
@@ -234,10 +261,37 @@ class Level:
 			
 			self.player.vulnerable = False
 			self.player.hurt_time = pygame.time.get_ticks()
-			# spawn particles or play sounds here
+
+			if attack_type == 'axe':
+				if random.random() < 0.4:
+					frozen_pos = (self.player.rect.midbottom[0], self.player.rect.midbottom[1] + 20)
+					self.animation_player.create_particles('frozen', frozen_pos, [self.visible_sprites], pos_type='midbottom')
+					self.player.freeze()
+			elif attack_type != 'none':
+				self.animation_player.create_particles(attack_type, self.player.rect.center, [self.visible_sprites])
+
+	def trigger_death_particles(self, pos, particle_type):
+		self.animation_player.create_particles(particle_type, pos, [self.visible_sprites])
 
 	def update_gate_state(self):
 		self.current_monsters = len(self.attackable_sprites)
+		
+		# Check for win condition / reward
+		if self.current_monsters == 0 and self.total_monsters > 0 and getattr(self, 'reward_given', True) == False:
+			self.reward_given = True
+			self.reward_display_time = pygame.time.get_ticks()
+			
+			if self.current_map == 'first':
+				self.reward_weapon = 'axe'
+			elif self.current_map == 'second':
+				self.reward_weapon = 'sai'
+			elif self.current_map == 'third':
+				self.reward_weapon = 'lance'
+			else:
+				self.reward_weapon = None
+				
+			if self.reward_weapon and self.reward_weapon not in self.player.unlocked_weapons:
+				self.player.unlocked_weapons.append(self.reward_weapon)
 		
 		# Regular gates (not entrance gates)
 		for gate in self.gate_sprites:
@@ -254,7 +308,58 @@ class Level:
 					# Restore floor visual
 					self.visible_sprites.floor_surf.blit(gate.closed_surf, gate.rect.topleft)
 
-	def run(self):
+	def display_reward_logic(self, events):
+		if getattr(self, 'reward_weapon', None) and hasattr(self, 'reward_display_time') and self.reward_display_time > 0:
+			current_time = pygame.time.get_ticks()
+			if current_time - self.reward_display_time < 4000: # 4 seconds
+				self.ui.show_reward(self.reward_weapon)
+				
+				# Allow skip after 500ms
+				if current_time - self.reward_display_time > 500:
+					for event in events:
+						if event.type == pygame.KEYDOWN:
+							self.reward_display_time = 0
+			else:
+				self.reward_display_time = 0
+
+	def restart_game(self):
+		self.player.health = self.player.stats['health']
+		self.player.target_health = self.player.health
+		self.player.potions_left = 3
+		self.player.unlocked_weapons = ['sword']
+		self.player.weapon_index = 0
+		self.player.weapon = self.player.unlocked_weapons[self.player.weapon_index]
+		self.player.vulnerable = True
+		self.player.frozen = False
+		self.game_over_selection = 0
+		self.switch_map('first')
+
+	def game_over_logic(self, events):
+		self.ui.show_game_over(self.game_over_selection)
+		
+		for event in events:
+			if event.type == pygame.KEYDOWN:
+				if event.key == pygame.K_a or event.key == pygame.K_LEFT:
+					self.game_over_selection = 0
+				elif event.key == pygame.K_d or event.key == pygame.K_RIGHT:
+					self.game_over_selection = 1
+				elif event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
+					if self.game_over_selection == 0:
+						self.restart_game()
+					elif self.game_over_selection == 1:
+						import sys
+						pygame.quit()
+						sys.exit()
+
+	def run(self, events=None):
+		if events is None: events = []
+		
+		if hasattr(self, 'player') and self.player.health <= 0:
+			self.visible_sprites.custom_draw(self.player)
+			self.ui.display(self.player, MAPS[self.current_map]['index'], self.current_monsters, self.total_monsters)
+			self.game_over_logic(events)
+			return
+
 		# update and draw the game
 		self.visible_sprites.custom_draw(self.player)
 		self.visible_sprites.update()
@@ -264,6 +369,7 @@ class Level:
 		self.update_gate_state()
 		self.check_map_transition()
 		self.ui.display(self.player, MAPS[self.current_map]['index'], self.current_monsters, self.total_monsters)
+		self.display_reward_logic(events)
 
 class YSortCameraGroup(pygame.sprite.Group):
 	def __init__(self):
@@ -313,6 +419,11 @@ class YSortCameraGroup(pygame.sprite.Group):
 
 			offset_pos = sprite.rect.topleft - self.offset
 			self.display_surface.blit(sprite.image,offset_pos)
+			
+		# draw health bars on top of all sprites
+		for sprite in self.sprites():
+			if hasattr(sprite, 'draw_health_bar'):
+				sprite.draw_health_bar(self.display_surface, self.offset)
 
 	def enemy_update(self,player):
 		enemy_sprites = [sprite for sprite in self.sprites() if hasattr(sprite,'sprite_type') and sprite.sprite_type == 'enemy']

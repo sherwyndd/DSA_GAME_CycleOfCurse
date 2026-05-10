@@ -15,13 +15,14 @@ class Game:
 	
 	def run(self):
 		while True:
-			for event in pygame.event.get():
+			events = pygame.event.get()
+			for event in events:
 				if event.type == pygame.QUIT:
 					pygame.quit()
 					sys.exit()
 
 			self.screen.fill('black')
-			self.level.run()
+			self.level.run(events)
 			pygame.display.update()
 			self.clock.tick(FPS)
 

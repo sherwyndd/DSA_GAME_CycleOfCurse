@@ -108,19 +108,55 @@ class UI:
 		text_rect = text_surf.get_rect(topleft = box_rect.topleft + pygame.math.Vector2(5,5))
 		self.display_surface.blit(text_surf, text_rect)
 
-	def weapon_overlay(self,weapon_index,has_switched):
+	def weapon_overlay(self,weapon_name,has_switched):
 		bg_rect = self.selection_box(10,610,has_switched) 
+		weapon_index = list(weapon_data.keys()).index(weapon_name)
 		weapon_surf = self.weapon_graphics[weapon_index]
 		weapon_rect = weapon_surf.get_rect(center = bg_rect.center)
 		self.display_surface.blit(weapon_surf,weapon_rect)
 		self.show_key_label('Q', bg_rect)
 
-	def magic_overlay(self,magic_index,has_switched):
+	def show_reward(self, weapon_name):
+		box_rect = pygame.Rect(0,0,400,250)
+		box_rect.center = (WIDTH // 2, HEIGHT // 2)
+		pygame.draw.rect(self.display_surface, UI_BG_COLOR, box_rect, border_radius = 10)
+		pygame.draw.rect(self.display_surface, UI_BORDER_COLOR_ACTIVE, box_rect, 4, border_radius = 10)
+		
+		text_surf = self.font.render('STAGE CLEARED!', False, TEXT_COLOR)
+		text_rect = text_surf.get_rect(center = (box_rect.centerx, box_rect.top + 40))
+		self.display_surface.blit(text_surf, text_rect)
+		
+		text_surf2 = self.font.render('NEW WEAPON UNLOCKED:', False, TEXT_COLOR)
+		text_rect2 = text_surf2.get_rect(center = (box_rect.centerx, box_rect.top + 80))
+		self.display_surface.blit(text_surf2, text_rect2)
+		
+		weapon_index = list(weapon_data.keys()).index(weapon_name)
+		weapon_surf = self.weapon_graphics[weapon_index]
+		weapon_surf = pygame.transform.scale_by(weapon_surf, 1.5)
+		weapon_rect = weapon_surf.get_rect(center = (box_rect.centerx, box_rect.bottom - 60))
+		self.display_surface.blit(weapon_surf, weapon_rect)
+		
+		name_surf = self.font.render(weapon_name.upper(), False, 'gold')
+		name_rect = name_surf.get_rect(center = (box_rect.centerx, box_rect.bottom - 20))
+		self.display_surface.blit(name_surf, name_rect)
+
+	def magic_overlay(self,magic_index,has_switched,player):
 		bg_rect = self.selection_box(80,615,has_switched) 
 		magic_surf = self.magic_graphics[magic_index]
-		magic_rect = magic_surf.get_rect(center = bg_rect.center)
-		self.display_surface.blit(magic_surf,magic_rect)
+		
+		if player.potions_left > 0:
+			magic_rect = magic_surf.get_rect(center = bg_rect.center)
+			self.display_surface.blit(magic_surf,magic_rect)
+			
 		self.show_key_label('Z', bg_rect)
+		
+		# Show potion count box
+		count_box = pygame.Rect(bg_rect.right - 20, bg_rect.top - 10, 30, 30)
+		pygame.draw.rect(self.display_surface, UI_BG_COLOR, count_box)
+		pygame.draw.rect(self.display_surface, UI_BORDER_COLOR, count_box, 3)
+		count_surf = self.font.render(str(player.potions_left), False, TEXT_COLOR)
+		count_rect = count_surf.get_rect(center = count_box.center)
+		self.display_surface.blit(count_surf, count_rect)
 
 	def display(self,player,map_index, monster_count, total_monsters):
 		self.show_bar(player.health,player.stats['health'],self.health_bar_rect,HEALTH_COLOR, player.target_health)
@@ -129,5 +165,42 @@ class UI:
 
 		self.show_map_index(map_index)
 
-		self.weapon_overlay(player.weapon_index,not player.can_switch_weapon)
-		self.magic_overlay(player.magic_index,not player.can_switch_magic)
+		self.weapon_overlay(player.weapon,not player.can_switch_weapon)
+		self.magic_overlay(player.magic_index,not player.can_switch_magic,player)
+
+	def show_game_over(self, selection):
+		overlay = pygame.Surface((WIDTH, HEIGHT))
+		overlay.set_alpha(150)
+		overlay.fill('black')
+		self.display_surface.blit(overlay, (0,0))
+		
+		box_rect = pygame.Rect(0,0,500,300)
+		box_rect.center = (WIDTH // 2, HEIGHT // 2)
+		pygame.draw.rect(self.display_surface, UI_BG_COLOR, box_rect, border_radius = 10)
+		pygame.draw.rect(self.display_surface, UI_BORDER_COLOR, box_rect, 4, border_radius = 10)
+		
+		title_font = pygame.font.Font(UI_FONT, 30)
+		text_surf = title_font.render('YOU DIED', False, 'red')
+		text_rect = text_surf.get_rect(center = (box_rect.centerx, box_rect.top + 60))
+		self.display_surface.blit(text_surf, text_rect)
+		
+		btn_w, btn_h = 180, 60
+		try_again_rect = pygame.Rect(0, 0, btn_w, btn_h)
+		try_again_rect.center = (box_rect.centerx - 110, box_rect.bottom - 80)
+		
+		exit_rect = pygame.Rect(0, 0, btn_w, btn_h)
+		exit_rect.center = (box_rect.centerx + 110, box_rect.bottom - 80)
+		
+		color0 = UI_BORDER_COLOR_ACTIVE if selection == 0 else UI_BORDER_COLOR
+		pygame.draw.rect(self.display_surface, UI_BG_COLOR, try_again_rect, border_radius = 5)
+		pygame.draw.rect(self.display_surface, color0, try_again_rect, 3, border_radius = 5)
+		try_surf = self.font.render('TRY AGAIN', False, TEXT_COLOR)
+		try_rect = try_surf.get_rect(center = try_again_rect.center)
+		self.display_surface.blit(try_surf, try_rect)
+		
+		color1 = UI_BORDER_COLOR_ACTIVE if selection == 1 else UI_BORDER_COLOR
+		pygame.draw.rect(self.display_surface, UI_BG_COLOR, exit_rect, border_radius = 5)
+		pygame.draw.rect(self.display_surface, color1, exit_rect, 3, border_radius = 5)
+		exit_surf = self.font.render('EXIT', False, TEXT_COLOR)
+		exit_rect_text = exit_surf.get_rect(center = exit_rect.center)
+		self.display_surface.blit(exit_surf, exit_rect_text)

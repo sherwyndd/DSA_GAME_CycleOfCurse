@@ -14,7 +14,7 @@ class Weapon(pygame.sprite.Sprite):
 		self.image = remove_background_floodfill(self.image, threshold = 40)
 		
 		# scale 
-		self.scale = 1.0 if getattr(owner, 'monster_name', None) == 'boss' else 0.84
+		self.scale = 1.2 if getattr(owner, 'monster_name', None) == 'boss' else 0.84
 		self.image = pygame.transform.scale_by(self.image, self.scale)
 		
 		# placement

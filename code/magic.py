@@ -1,6 +1,5 @@
 import pygame
 from settings import *
-from random import randint
 
 class MagicPlayer:
 	def __init__(self,animation_player):
