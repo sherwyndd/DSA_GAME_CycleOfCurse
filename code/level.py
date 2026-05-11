@@ -49,8 +49,6 @@ class Level:
 		self.gate_sprites = pygame.sprite.Group()
 		self.entrance_gates = pygame.sprite.Group()
 
-		self.create_map()
-		
 		# user interface
 		self.ui = UI()
 		self.start_time = pygame.time.get_ticks()
@@ -61,8 +59,12 @@ class Level:
 		# particles
 		self.animation_player = AnimationPlayer()
 		
-		# Game over
+		# Game over / Win
 		self.game_over_selection = 0
+		self.win_selection = 0
+		self.status = 'playing'
+
+		self.create_map()
 
 	def create_map(self):
 		map_data = MAPS[self.current_map]
@@ -157,20 +159,20 @@ class Level:
 			positions = random.sample(empty_tiles, spawn_count)
 			for i, pos in enumerate(positions):
 				if i < 5:
-					Enemy('slime', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles)
+					Enemy('slime', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, animation_player=self.animation_player, particle_groups=[self.visible_sprites])
 				else:
-					Enemy('spirit', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles)
+					Enemy('spirit', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, animation_player=self.animation_player, particle_groups=[self.visible_sprites])
 		elif empty_tiles and self.current_map == 'third':
 			spawn_count = min(9, len(empty_tiles))
 			self.total_monsters = spawn_count
 			positions = random.sample(empty_tiles, spawn_count)
 			for i, pos in enumerate(positions):
 				if i < 5:
-					Enemy('skeleton', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles)
+					Enemy('skeleton', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, animation_player=self.animation_player, particle_groups=[self.visible_sprites])
 				elif i < 7:
-					Enemy('skeleton-big', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles)
+					Enemy('skeleton-big', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, animation_player=self.animation_player, particle_groups=[self.visible_sprites])
 				else:
-					Enemy('skeleton-shaman', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles)
+					Enemy('skeleton-shaman', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, animation_player=self.animation_player, particle_groups=[self.visible_sprites])
 		elif empty_tiles and self.current_map == 'fourth':
 			# Sukuna's round - just the boss
 			self.total_monsters = 0
@@ -179,19 +181,24 @@ class Level:
 
 		# Spawn boss on first map
 		if self.current_map == 'first':
-			Enemy('boss', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, self.create_enemy_attack, self.destroy_enemy_attack)
+			Enemy('boss', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, self.create_enemy_attack, self.destroy_enemy_attack, animation_player=self.animation_player, particle_groups=[self.visible_sprites])
 			self.total_monsters += 1
 
 		# Spawn boss2 on second map
 		if self.current_map == 'second':
-			boss2 = Enemy('boss2', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, self.create_enemy_attack, self.destroy_enemy_attack)
+			boss2 = Enemy('boss2', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, self.create_enemy_attack, self.destroy_enemy_attack, animation_player=self.animation_player, particle_groups=[self.visible_sprites])
 			self.total_monsters += 1
-			# Wire summon references (player may not exist yet — set after player init)
+			# Still need to wire summon references for logic
 			self._pending_boss2 = boss2
+
+		# Spawn boss3 (Sukuna) on third map
+		if self.current_map == 'third':
+			Enemy('boss3', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, self.create_enemy_attack, self.destroy_enemy_attack, self.create_enemy_projectile, animation_player=self.animation_player, particle_groups=[self.visible_sprites])
+			self.total_monsters += 1
 
 		# Spawn boss3 (Sukuna) on fourth map
 		if self.current_map == 'fourth':
-			Enemy('boss3', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, self.create_enemy_attack, self.destroy_enemy_attack, self.create_enemy_projectile)
+			Enemy('boss3', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, self.create_enemy_attack, self.destroy_enemy_attack, self.create_enemy_projectile, animation_player=self.animation_player, particle_groups=[self.visible_sprites])
 			self.total_monsters += 1
 
 		if self.total_monsters > 0:

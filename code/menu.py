@@ -12,25 +12,15 @@ class Menu:
             
         # Selection
         self.selection_index = 0
-        self.buttons = ['PLAY GAME', 'LEADERBOARD', 'EXIT']
+        self.buttons = ['PLAY GAME', 'SETTINGS', 'LEADERBOARD', 'EXIT']
         
     def display(self):
         self.display_surface.fill(self.bg_color)
         
-        # Decorative particles or subtle grid (Optional)
-        # Just black for now for maximum contrast
-        
         # Title
         title_surf = self.font.render('Game : Cycle of Curse', False, 'gold')
-        title_rect = title_surf.get_rect(center = (WIDTH // 2, HEIGHT // 4))
+        title_rect = title_surf.get_rect(center = (WIDTH // 2, HEIGHT // 6))
         
-        # Glow effect for title
-        for i in range(5):
-            glow_surf = self.font.render('Game : Cycle of Curse', False, (150, 120, 0))
-            glow_rect = glow_surf.get_rect(center = (WIDTH // 2, HEIGHT // 4))
-            glow_rect.inflate_ip(i*2, i*2)
-            # self.display_surface.blit(glow_surf, glow_rect) # Too much?
-            
         pygame.draw.rect(self.display_surface, UI_BG_COLOR, title_rect.inflate(60,30), border_radius=15)
         pygame.draw.rect(self.display_surface, UI_BORDER_COLOR_ACTIVE, title_rect.inflate(60,30), 4, border_radius=15)
         self.display_surface.blit(title_surf, title_rect)
@@ -42,9 +32,9 @@ class Menu:
             
             # Button Box
             btn_width = 350
-            btn_height = 60
+            btn_height = 50
             rect = pygame.Rect(0, 0, btn_width, btn_height)
-            rect.center = (WIDTH // 2, HEIGHT // 2 + i * 90)
+            rect.center = (WIDTH // 2, HEIGHT // 2 - 50 + i * 80)
             
             # Draw button background
             bg_color = '#1a1a1a' if is_selected else UI_BG_COLOR
@@ -68,12 +58,90 @@ class Menu:
             
             self.display_surface.blit(surf, text_rect)
 
-    def input(self):
-        keys = pygame.key.get_pressed()
+class Settings:
+    def __init__(self):
+        self.display_surface = pygame.display.get_surface()
+        self.font = pygame.font.Font(UI_FONT, 20)
+        self.title_font = pygame.font.Font(UI_FONT, 30)
         
-        # Add a cooldown for menu movement
-        # (Usually handled in main loop events)
-        pass
+        self.actions = list(CONTROLS.keys())
+        self.selection_index = 0
+        self.waiting_for_key = False
+        
+    def display(self):
+        self.display_surface.fill('#050505')
+        
+        title_surf = self.title_font.render('SETTINGS', False, 'gold')
+        title_rect = title_surf.get_rect(center = (WIDTH // 2, 80))
+        self.display_surface.blit(title_surf, title_rect)
+        
+        # Header
+        h_action = self.font.render('ACTION', False, 'gray')
+        h_key = self.font.render('BINDING', False, 'gray')
+        self.display_surface.blit(h_action, (WIDTH // 2 - 250, 150))
+        self.display_surface.blit(h_key, (WIDTH // 2 + 50, 150))
+        pygame.draw.line(self.display_surface, UI_BORDER_COLOR_ACTIVE, (WIDTH // 2 - 270, 180), (WIDTH // 2 + 250, 180), 2)
+
+        for i, action in enumerate(self.actions):
+            is_selected = i == self.selection_index
+            y = 220 + i * 50
+            
+            # Highlight box
+            if is_selected:
+                box_rect = pygame.Rect(WIDTH // 2 - 270, y - 10, 540, 40)
+                color = '#222222' if not self.waiting_for_key else '#331111'
+                pygame.draw.rect(self.display_surface, color, box_rect, border_radius=5)
+                pygame.draw.rect(self.display_surface, 'gold', box_rect, 2, border_radius=5)
+            
+            # Action Name
+            action_surf = self.font.render(action, False, TEXT_COLOR)
+            self.display_surface.blit(action_surf, (WIDTH // 2 - 250, y))
+            
+            # Key Binding
+            key_val = CONTROLS[action]
+            if is_selected and self.waiting_for_key:
+                key_text = 'PRESS ANY KEY...'
+                color = 'gold'
+            elif key_val is None:
+                key_text = 'NONE'
+                color = 'red'
+            else:
+                key_text = pygame.key.name(key_val).upper()
+                color = 'white'
+            
+            key_surf = self.font.render(key_text, False, color)
+            self.display_surface.blit(key_surf, (WIDTH // 2 + 50, y))
+            
+        # Footer
+        footer_text = 'SPACE: CHANGE | ESC: BACK'
+        footer_surf = self.font.render(footer_text, False, 'gray')
+        footer_rect = footer_surf.get_rect(center = (WIDTH // 2, HEIGHT - 50))
+        self.display_surface.blit(footer_surf, footer_rect)
+
+    def handle_input(self, event):
+        if not self.waiting_for_key:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_UP or event.key == pygame.K_w:
+                    self.selection_index = (self.selection_index - 1) % len(self.actions)
+                elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
+                    self.selection_index = (self.selection_index + 1) % len(self.actions)
+                elif event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
+                    CONTROLS[self.actions[self.selection_index]] = None
+                    self.waiting_for_key = True
+                elif event.key == pygame.K_ESCAPE:
+                    return 'MENU'
+        else:
+            if event.type == pygame.KEYDOWN:
+                # Check for conflicts
+                new_key = event.key
+                for action in self.actions:
+                    if CONTROLS[action] == new_key:
+                        CONTROLS[action] = None
+                
+                # Assign new key
+                CONTROLS[self.actions[self.selection_index]] = new_key
+                self.waiting_for_key = False
+        return 'SETTINGS'
 
 class Leaderboard:
     def __init__(self):

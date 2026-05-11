@@ -179,12 +179,12 @@ class Player(Entity):
 		keys = pygame.key.get_pressed()
 
 		# movement input
-		if keys[pygame.K_w]: self.direction.y = -1; self.status = 'up'
-		elif keys[pygame.K_s]: self.direction.y = 1; self.status = 'down'
+		if keys[CONTROLS['UP']]: self.direction.y = -1; self.status = 'up'
+		elif keys[CONTROLS['DOWN']]: self.direction.y = 1; self.status = 'down'
 		else: self.direction.y = 0
 
-		if keys[pygame.K_d]: self.direction.x = 1; self.status = 'right'
-		elif keys[pygame.K_a]: self.direction.x = -1; self.status = 'left'
+		if keys[CONTROLS['RIGHT']]: self.direction.x = 1; self.status = 'right'
+		elif keys[CONTROLS['LEFT']]: self.direction.x = -1; self.status = 'left'
 		else: self.direction.x = 0
 
 	def get_attack_input(self):
@@ -192,7 +192,7 @@ class Player(Entity):
 		keys = pygame.key.get_pressed()
 
 		# attack input
-		if keys[pygame.K_SPACE] and self.can_attack and self.direction.magnitude() == 0:
+		if keys[CONTROLS['ATTACK']] and self.can_attack and self.direction.magnitude() == 0:
 			self.attacking = True
 			self.attack_type = 'attack'
 			self.attack_time = pygame.time.get_ticks()
@@ -201,7 +201,7 @@ class Player(Entity):
 
 			
 		# dash input
-		if keys[pygame.K_n] and self.can_dash:
+		if keys[CONTROLS['DASH']] and self.can_dash:
 			self.attacking = True
 			self.attack_type = 'dash'
 			self.attack_time = pygame.time.get_ticks()
@@ -209,7 +209,7 @@ class Player(Entity):
 			self.direction.x = 0; self.direction.y = 0
 
 		# magic input
-		if keys[pygame.K_z] and self.can_cast_magic:
+		if keys[CONTROLS['MAGIC']] and self.can_cast_magic:
 			style = list(magic_data.keys())[self.magic_index]
 			
 			can_cast = True
@@ -229,7 +229,7 @@ class Player(Entity):
 					self.create_magic(style,strength,cost)
 
 		# weapon switch input
-		if keys[pygame.K_q] and self.can_switch_weapon:
+		if keys[CONTROLS['SWITCH']] and self.can_switch_weapon:
 			self.can_switch_weapon = False
 			self.weapon_switch_time = pygame.time.get_ticks()
 			

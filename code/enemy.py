@@ -6,47 +6,35 @@ from entity import Entity
 from support import *
 
 class Enemy(Entity):
-	def __init__(self, monster_name, pos, groups, obstacle_sprites, damage_player, trigger_death_particles = None, create_attack = None, destroy_attack = None, create_projectile = None):
+	def __init__(self, monster_name, pos, groups, obstacle_sprites, damage_player, trigger_death_particles, create_attack = None, destroy_attack = None, create_projectile = None, animation_player = None, particle_groups = None):
+
 		# general setup
 		super().__init__(groups)
 		self.sprite_type = 'enemy'
-
-		# graphics setup
 		self.monster_name = monster_name
 		self.import_graphics(monster_name)
 		self.status = 'idle'
-		self.image = self.animations[self.status][self.frame_index]
+		self.image = self.animations[self.status][0]
 
-		# movement
-		self.rect = self.image.get_rect(center = pos)
-		self.hitbox = self.rect.inflate(0,-8)
+		# movement 
+		self.rect = self.image.get_rect(topleft = pos)
+		self.hitbox = self.rect.inflate(0,-10)
 		self.obstacle_sprites = obstacle_sprites
 
 		# stats
-		monster_info = monster_data[self.monster_name]
-		self.health = monster_info['health']
-		self.max_health = monster_info['health']
-		self.speed = monster_info['speed']
-		self.attack_damage = monster_info['damage']
-		self.resistance = monster_info['resistance']
-		self.attack_radius = monster_info['attack_radius']
-		self.notice_radius = monster_info['notice_radius']
-		self.attack_type = monster_info['attack_type']
+		self.monster_info = monster_data[self.monster_name]
+		self.health = self.monster_info['health']
+		self.max_health = self.health
+		self.speed = self.monster_info['speed']
+		self.attack_damage = self.monster_info['damage']
+		self.resistance = self.monster_info['resistance']
+		self.attack_radius = self.monster_info['attack_radius']
+		self.notice_radius = self.monster_info['notice_radius']
+		self.attack_type = self.monster_info['attack_type']
 
 		# player interaction
 		self.can_attack = True
 		self.attack_time = None
-		self.attack_cooldown = 400
-		self.damage_player = damage_player
-		self.trigger_death_particles = trigger_death_particles
-
-		self.vulnerable = True
-		self.hit_time = None
-		self.invincibility_duration = 300
-
-		# attack
-		self.can_attack = True
-		self.spawn_time = pygame.time.get_ticks()
 		self.attack_delay = 750
 
 		# boss attack setup
@@ -54,6 +42,9 @@ class Enemy(Entity):
 		self.destroy_attack = destroy_attack
 		self.create_projectile = create_projectile
 		self.attacking = False
+		self.animation_player = animation_player
+		self.particle_groups = particle_groups
+		self.damage_player = damage_player
 		
 		if self.monster_name == 'boss3':
 			self.special_attack_time = pygame.time.get_ticks()
@@ -102,11 +93,24 @@ class Enemy(Entity):
 			self.anti_heal_time = 0
 			self.anti_heal_duration = 3000
 
+		# invincibility timer
+		self.vulnerable = True
+		self.hit_time = None
+		self.invincibility_duration = 300
+		self.spawn_time = pygame.time.get_ticks()
+
+		# timer logic for red flicker
+		self.red_flicker = False
+		self.red_flicker_start_time = 0
+		self.red_flicker_duration = 200 # 0.2s flicker
+
+		# death particles
+		self.trigger_death_particles = trigger_death_particles
 
 		# freeze effect
 		self.frozen = False
 		self.freeze_time = 0
-		self.freeze_duration = 200
+		self.freeze_duration = 1000 # Increased to 1.0s for better feel
 
 	def import_graphics(self, name):
 		if name == 'boss':
@@ -290,13 +294,13 @@ class Enemy(Entity):
 					self.attacking = True
 					self.attack_time = pygame.time.get_ticks()
 					if self.create_attack: self.create_attack(self)
-				return
-			else:
-				self.status = 'idle'
-				return
-
-		distance = self.get_player_distance_direction(player)[0]
 		current_time = pygame.time.get_ticks()
+		distance = self.get_player_distance_direction(player)[0]
+
+		if self.frozen:
+			if 'move' in self.status: self.status = self.status.replace('move', 'idle')
+			elif 'attack' in self.status: pass # Keep showing attack frame but frozen
+			return
 
 		# Special Ranged Attack for Boss 3 (Sukuna) - Every 3 seconds
 		if self.monster_name == 'boss3' and not self.attacking and current_time - self.special_attack_time > self.special_attack_cooldown:
@@ -488,9 +492,9 @@ class Enemy(Entity):
 					if random.random() < 0.2: # Reduced to 20%
 						self.freeze()
 						# Spawn frozen particles at enemy position
-						if hasattr(self, '_summon_animation_player') and self._summon_animation_player:
+						if self.animation_player and self.particle_groups:
 							frozen_pos = (self.rect.midbottom[0], self.rect.midbottom[1] + 20)
-							self._summon_animation_player.create_particles('frozen', frozen_pos, [self._summon_groups[0]], pos_type='midbottom')
+							self.animation_player.create_particles('frozen', frozen_pos, self.particle_groups, pos_type='midbottom')
 						
 			elif attack_type == 'magic':
 				pass
@@ -625,17 +629,44 @@ class Enemy(Entity):
 				if s.variant in ('black', 'white'):
 					s.begin_despawn()
 
-		# Summon Logic — Priority: Dogs/Totality → Frog(2 waves) → Bull → Frog again
+		# Summon Logic — Priority: 2 Dogs -> 2 Frogs -> Totality -> Bull -> 2 Frogs
 		if self.mana >= self._summon_cost * 0.8:
 			existing_variants = [s.variant for s in self._summons]
-			# Core slots (Max 2) are for: black, white, totality, bull
 			core_summons = [s for s in self._summons if s.variant in ('black', 'white', 'totality', 'bull')]
 			slots_needed = self._max_summons - len(core_summons)
+			active_frogs = [s for s in self._summons if s.variant == 'frog']
 
-			# === CORE SUMMONS (Dogs / Totality) ===
-			if self._fusion_active:
+			# 1. BLACK & WHITE DOGS
+			variants = ['white', 'black']
+			for v in variants:
+				if slots_needed <= 0 or self.mana < self._summon_cost: break
+				if v not in existing_variants and v not in self._dead_summons:
+					dog = DivineDog(
+						variant      = v,
+						owner        = self,
+						player       = self._summon_player,
+						groups       = self._summon_groups,
+						obstacle_sprites = self.obstacle_sprites,
+						damage_player   = self._summon_damage,
+						animation_player = self._summon_animation_player
+					)
+					self._summons.append(dog)
+					self.mana -= self._summon_cost
+					slots_needed -= 1
+
+			# 2. FIRST 2 FROGS (Wave 1)
+			while len(active_frogs) < 2 and self._frog_total_count < 2 and self.mana >= self._summon_cost * 0.8:
+				from summon import Frog
+				frog = Frog(self, self._summon_player, self._summon_groups, self.obstacle_sprites, self._summon_damage, self._summon_animation_player)
+				self._summons.append(frog)
+				self.mana -= self._summon_cost * 0.8
+				self._frog_total_count += 1
+				active_frogs.append(frog)
+
+			# 3. TOTALITY (Requires both dogs dead)
+			if self._fusion_active and slots_needed > 0:
 				if 'totality' not in existing_variants and 'totality' not in self._dead_summons:
-					if slots_needed > 0 and self.mana >= self._summon_cost * 1.5:
+					if self.mana >= self._summon_cost * 1.5:
 						dog = DivineDog(
 							variant      = 'totality',
 							owner        = self,
@@ -648,52 +679,28 @@ class Enemy(Entity):
 						self._summons.append(dog)
 						self.mana -= self._summon_cost * 1.5
 						slots_needed -= 1
-			else:
-				variants = ['white', 'black']
-				for v in variants:
-					if slots_needed <= 0 or self.mana < self._summon_cost: break
-					if v not in existing_variants and v not in self._dead_summons:
-						dog = DivineDog(
-							variant      = v,
-							owner        = self,
-							player       = self._summon_player,
-							groups       = self._summon_groups,
-							obstacle_sprites = self.obstacle_sprites,
-							damage_player   = self._summon_damage,
-							animation_player = self._summon_animation_player
-						)
-						self._summons.append(dog)
-						self.mana -= self._summon_cost
-						slots_needed -= 1
 
-			# === Track bull phase trigger ===
-			# Bull phase starts if 1 frog wave completes (2 frogs) OR a dog (black/white) has died
-			if not self._bull_phase:
-				if self._frog_total_count >= 2 or 'black' in self._dead_summons or 'white' in self._dead_summons:
-					self._bull_phase = True
-
-			# === INDEPENDENT SUMMONS (Frog / Bull) ===
-			active_frogs = [s for s in self._summons if s.variant == 'frog']
-
-			if self._bull_phase and not self._bull_summoned:
-				# Bull phase: Prioritize Bull first
+			# 4. BULL (If Totality condition not met or Totality already handled/dead)
+			if not self._bull_summoned and slots_needed > 0:
+				# Skip Totality if dogs aren't dead yet, proceed to Bull
 				if 'bull' not in existing_variants and 'bull' not in self._dead_summons:
-					if slots_needed > 0 and self.mana >= self._summon_cost * 1.2:
+					if self.mana >= self._summon_cost * 1.2:
 						from summon import Bull
 						bull = Bull(self, self._summon_player, self._summon_groups, self.obstacle_sprites, self._summon_damage, self._summon_animation_player)
 						self._summons.append(bull)
 						self.mana -= self._summon_cost * 1.2
 						self._bull_summoned = True
 						slots_needed -= 1
-			else:
-				# Frog phase: Summon frogs (up to 2 at once)
-				while len(active_frogs) < 2 and self.mana >= self._summon_cost * 0.8:
-					from summon import Frog
-					frog = Frog(self, self._summon_player, self._summon_groups, self.obstacle_sprites, self._summon_damage, self._summon_animation_player)
-					self._summons.append(frog)
-					self.mana -= self._summon_cost * 0.8
-					self._frog_total_count += 1
-					active_frogs.append(frog)
+
+			# 5. REMAINING 2 FROGS (Wave 2)
+			while len(active_frogs) < 2 and self._frog_total_count < 4 and self.mana >= self._summon_cost * 0.8:
+				from summon import Frog
+				frog = Frog(self, self._summon_player, self._summon_groups, self.obstacle_sprites, self._summon_damage, self._summon_animation_player)
+				self._summons.append(frog)
+				self.mana -= self._summon_cost * 0.8
+				self._frog_total_count += 1
+				active_frogs.append(frog)
+
 
 	def check_death(self):
 		if self.health <= 0:

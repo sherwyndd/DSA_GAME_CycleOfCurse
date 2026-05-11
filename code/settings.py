@@ -1,3 +1,4 @@
+import pygame
 # game setup
 WIDTH    = 900
 HEIGHT   = 700
@@ -120,6 +121,19 @@ monster_data = {
 	'boss3': {'health': 700,'damage':30,'attack_type': 'lance', 'speed': 2.2, 'resistance': 0.1, 'attack_radius': 80, 'notice_radius': 400},
 	'bull': {'health': 150,'damage':20,'attack_type': 'bull', 'speed': 2.5, 'resistance': 0, 'attack_radius': 200, 'notice_radius': 400},
 	'frog': {'health': 60,'damage':2,'attack_type': 'frog', 'speed': 1.0, 'resistance': 2, 'attack_radius': 80, 'notice_radius': 400}
+}
+
+
+# controls
+CONTROLS = {
+    'UP': pygame.K_w,
+    'DOWN': pygame.K_s,
+    'LEFT': pygame.K_a,
+    'RIGHT': pygame.K_d,
+    'ATTACK': pygame.K_SPACE,
+    'MAGIC': pygame.K_z,
+    'SWITCH': pygame.K_q,
+    'DASH': pygame.K_n
 }
 
 MAPS = {
