@@ -11,6 +11,8 @@ class GhostNode:
 		self.alpha = alpha
 		self.next = None
 
+GOD_MODE = True
+
 class Player(Entity):
 	def __init__(self,pos,groups,obstacle_sprites,create_attack,destroy_attack):
 		super().__init__(groups)
@@ -45,7 +47,7 @@ class Player(Entity):
 		# weapon
 		self.create_attack = create_attack
 		self.destroy_attack = destroy_attack
-		self.unlocked_weapons = ['sword', 'axe']
+		self.unlocked_weapons = ['sword']
 		self.weapon_index = 0
 		self.weapon = self.unlocked_weapons[self.weapon_index]
 		self.can_switch_weapon = True
@@ -76,7 +78,7 @@ class Player(Entity):
 		self.health = 100
 		self.target_health = self.health
 		self.armor = 1
-		self.potions_left = 3
+		self.potions_left = 5
 
 		# ghost effect (Linked List)
 		self.ghost_head = None # Head of our Linked List
@@ -101,6 +103,21 @@ class Player(Entity):
 		self.knockback_vector = pygame.math.Vector2()
 		self.knockback_duration = 150
 		self.knockback_time = 0
+
+		# status effects
+		self.is_burning = False
+		self.burn_start_time = 0
+		self.burn_duration = 3000
+		self.burn_damage_interval = 600
+		self.last_burn_damage_time = 0
+
+		self.is_slowed = False
+		self.slow_start_time = 0
+		self.slow_duration = 3000
+
+		self.red_flicker = False
+		self.red_flicker_start_time = 0
+		self.red_flicker_duration = 600
 
 	# Flood fill moved to support.py
 
@@ -156,7 +173,8 @@ class Player(Entity):
 		self.animations['attack'] = [idle_surf]; self.animations['dash'] = [idle_surf]
 
 	def get_movement_input(self):
-		if self.attacking or self.frozen: return
+		if self.frozen: return
+		if self.attacking and self.attack_type != 'magic': return
 
 		keys = pygame.key.get_pressed()
 
@@ -183,7 +201,7 @@ class Player(Entity):
 
 			
 		# dash input
-		if keys[pygame.K_LCTRL] and self.can_dash:
+		if keys[pygame.K_n] and self.can_dash:
 			self.attacking = True
 			self.attack_type = 'dash'
 			self.attack_time = pygame.time.get_ticks()
@@ -191,7 +209,7 @@ class Player(Entity):
 			self.direction.x = 0; self.direction.y = 0
 
 		# magic input
-		if keys[pygame.K_z] and self.can_cast_magic and self.direction.magnitude() == 0:
+		if keys[pygame.K_z] and self.can_cast_magic:
 			style = list(magic_data.keys())[self.magic_index]
 			
 			can_cast = True
@@ -224,15 +242,24 @@ class Player(Entity):
 
 	def get_status(self):
 		if self.attacking:
-			if '_attack' not in self.status and '_dash' not in self.status:
-				self.status = self.status.split('_')[0] + '_' + self.attack_type
-			return
+			if self.attack_type != 'magic':
+				if '_attack' not in self.status and '_dash' not in self.status:
+					self.status = self.status.split('_')[0] + '_' + self.attack_type
+				return
+			else:
+				# For magic (heal), don't lock the status if moving
+				if self.direction.magnitude() == 0:
+					if '_magic' not in self.status:
+						self.status = self.status.split('_')[0] + '_magic'
+					return
 
 		if self.direction.x == 0 and self.direction.y == 0:
 			if 'idle' not in self.status:
 				self.status = self.status.split('_')[0] + '_idle'
 
 	def move(self,speed):
+		if self.is_slowed:
+			speed *= 0.5
 		if self.direction.magnitude() != 0:
 			self.direction = self.direction.normalize()
 		
@@ -252,12 +279,15 @@ class Player(Entity):
 		self.hitbox.y += (self.direction.y * speed) + lunge_vector.y
 		self.collision("vertical")
 
-		# Apply knockback
+		# Apply knockback in small steps to ensure collision works for high speed
 		if pygame.time.get_ticks() - self.knockback_time < self.knockback_duration:
-			self.hitbox.x += self.knockback_vector.x
-			self.collision("horizontal")
-			self.hitbox.y += self.knockback_vector.y
-			self.collision("vertical")
+			steps = 4
+			step_vec = self.knockback_vector / steps
+			for _ in range(steps):
+				self.hitbox.x += step_vec.x
+				self.collision("horizontal")
+				self.hitbox.y += step_vec.y
+				self.collision("vertical")
 
 		# Final clamping and center update (clamping happens in Entity.move, but since we are overriding, we ensure it here or call super)
 		# Actually, Entity.move is the parent, and we just rewrote the logic here.
@@ -273,13 +303,22 @@ class Player(Entity):
 		if direction == "horizontal":
 			for sprite in self.obstacle_sprites:
 				if sprite is not self and sprite.hitbox.colliderect(self.hitbox):
-					if self.direction.x > 0 or 'right' in self.status: self.hitbox.right = sprite.hitbox.left
-					if self.direction.x < 0 or 'left' in self.status: self.hitbox.left = sprite.hitbox.right
+					overlap_left = self.hitbox.right - sprite.hitbox.left
+					overlap_right = sprite.hitbox.right - self.hitbox.left
+					if overlap_left < overlap_right:
+						self.hitbox.right = sprite.hitbox.left
+					else:
+						self.hitbox.left = sprite.hitbox.right
+
 		if direction == "vertical":
 			for sprite in self.obstacle_sprites:
 				if sprite is not self and sprite.hitbox.colliderect(self.hitbox):
-					if self.direction.y > 0 or 'down' in self.status: self.hitbox.bottom = sprite.hitbox.top
-					if self.direction.y < 0 or 'up' in self.status: self.hitbox.top = sprite.hitbox.bottom
+					overlap_top = self.hitbox.bottom - sprite.hitbox.top
+					overlap_bottom = sprite.hitbox.bottom - self.hitbox.top
+					if overlap_top < overlap_bottom:
+						self.hitbox.bottom = sprite.hitbox.top
+					else:
+						self.hitbox.top = sprite.hitbox.bottom
 
 	def cooldowns(self):
 		current_time = pygame.time.get_ticks()
@@ -354,12 +393,29 @@ class Player(Entity):
 			self.image = self.image.copy()
 			self.image.blit(ice_surf, (0,0), special_flags = pygame.BLEND_RGBA_MULT)
 
+		# Apply red flicker if hit by fire
+		if self.red_flicker:
+			current_time = pygame.time.get_ticks()
+			if current_time - self.red_flicker_start_time < self.red_flicker_duration:
+				if (current_time // 100) % 2 == 0:
+					# Create a red tinted version
+					self.image = self.image.copy() # Copy to avoid modifying original frames
+					red_surf = pygame.Surface(self.image.get_size()).convert_alpha()
+					red_surf.fill((255, 50, 50, 150))
+					self.image.blit(red_surf, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+			else:
+				self.red_flicker = False
+
 		self.rect = self.image.get_rect(center = self.hitbox.center)
 
 		# flicker 
-		if not self.vulnerable:
-			alpha = self.wave_value()
-			self.image.set_alpha(alpha)
+		if self.is_burning:
+			self.image.set_alpha(255)
+		elif not self.vulnerable:
+			if (pygame.time.get_ticks() // 50) % 2 == 0:
+				self.image.set_alpha(100)
+			else:
+				self.image.set_alpha(255)
 		else:
 			self.image.set_alpha(255)
 
@@ -419,6 +475,7 @@ class Player(Entity):
 					pass
 
 	def update(self):
+		current_time = pygame.time.get_ticks()
 		self.get_movement_input()
 		
 		# Apply slow effect to speed
@@ -430,12 +487,29 @@ class Player(Entity):
 		self.cooldowns()
 		self.get_status()
 		self.animate()
-
+		
 		# gradual healing
 		if self.health < self.target_health:
 			self.health += (self.target_health - self.health) / 50 # smooth transition (approx 2.5s)
 			if self.target_health - self.health < 0.1:
 				self.health = self.target_health
+
+		# burn effect
+		if self.is_burning:
+			if current_time - self.burn_start_time < self.burn_duration:
+				if current_time - self.last_burn_damage_time >= self.burn_damage_interval:
+					if not GOD_MODE:
+						damage = 2
+						self.health -= damage
+						self.target_health -= damage
+					self.last_burn_damage_time = current_time
+			else:
+				self.is_burning = False
+
+		# slow effect
+		if self.is_slowed:
+			if current_time - self.slow_start_time >= self.slow_duration:
+				self.is_slowed = False
 
 		# ghost update
 		self.update_ghosts()

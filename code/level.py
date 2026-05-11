@@ -29,10 +29,11 @@ class Level:
 		# self.full_bg_surf = pygame.image.load('../graphics/background4.png').convert_alpha()
 
 		# sprite setup
-		self.current_map = 'second'
+		self.current_map = 'first'
 		
 		# background cache
 		self.bg_cache = {}
+		self.telegraphs = []
 		for map_name, data in MAPS.items():
 			path = data['bg']
 			size = (data['width'], data['height'])
@@ -52,6 +53,7 @@ class Level:
 		
 		# user interface
 		self.ui = UI()
+		self.start_time = pygame.time.get_ticks()
 
 		# magic 
 		self.magic_player = MagicPlayer(None)
@@ -158,6 +160,20 @@ class Level:
 					Enemy('slime', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles)
 				else:
 					Enemy('spirit', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles)
+		elif empty_tiles and self.current_map == 'third':
+			spawn_count = min(9, len(empty_tiles))
+			self.total_monsters = spawn_count
+			positions = random.sample(empty_tiles, spawn_count)
+			for i, pos in enumerate(positions):
+				if i < 5:
+					Enemy('skeleton', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles)
+				elif i < 7:
+					Enemy('skeleton-big', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles)
+				else:
+					Enemy('skeleton-shaman', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles)
+		elif empty_tiles and self.current_map == 'fourth':
+			# Sukuna's round - just the boss
+			self.total_monsters = 0
 		else:
 			self.total_monsters = 0
 
@@ -172,6 +188,11 @@ class Level:
 			self.total_monsters += 1
 			# Wire summon references (player may not exist yet — set after player init)
 			self._pending_boss2 = boss2
+
+		# Spawn boss3 (Sukuna) on fourth map
+		if self.current_map == 'fourth':
+			Enemy('boss3', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, self.create_enemy_attack, self.destroy_enemy_attack, self.create_enemy_projectile)
+			self.total_monsters += 1
 
 		if self.total_monsters > 0:
 			self.reward_given = False
@@ -188,7 +209,9 @@ class Level:
 		
 		self.current_map = new_map
 		self.create_map()
-		self.player.potions_left = 3
+		self.player.health = self.player.stats['health']
+		self.player.target_health = self.player.health
+		self.player.potions_left = 5
 		
 		if spawn_pos:
 			self.player.hitbox.center = spawn_pos
@@ -239,6 +262,8 @@ class Level:
 	def create_magic(self,style,strength,cost):
 		if style == 'heal':
 			self.magic_player.heal(self.player,strength,cost,[self.visible_sprites])
+		elif style == 'dismantle':
+			self.magic_player.dismantle(self.player, [self.visible_sprites, self.attack_sprites], self.obstacle_sprites)
 
 	def create_enemy_attack(self, enemy):
 		Weapon(enemy, [self.visible_sprites, self.enemy_attack_sprites])
@@ -246,6 +271,18 @@ class Level:
 	def destroy_enemy_attack(self, enemy):
 		for sprite in self.enemy_attack_sprites:
 			sprite.kill()
+
+	def destroy_enemy_attack(self, enemy):
+		for sprite in self.enemy_attack_sprites:
+			if hasattr(sprite, 'owner') and sprite.owner == enemy:
+				# Don't kill projectiles/magic, let them finish their own duration
+				if getattr(sprite, 'sprite_type', '') != 'magic':
+					sprite.kill()
+
+	def create_enemy_projectile(self, enemy, style, direction):
+		if style == 'dismantle':
+			from magic import SukunaSlash
+			SukunaSlash(enemy.rect.center, direction, [self.visible_sprites, self.enemy_attack_sprites], self.obstacle_sprites, self.animation_player, self.player, owner = enemy)
 
 	def player_attack_logic(self):
 		if self.attack_sprites:
@@ -258,20 +295,55 @@ class Level:
 	def enemy_attack_logic(self):
 		if self.enemy_attack_sprites:
 			for attack_sprite in self.enemy_attack_sprites:
-				if attack_sprite.rect.colliderect(self.player.hitbox):
-					weapon_type = attack_sprite.owner.weapon if hasattr(attack_sprite.owner, 'weapon') else 'weapon'
-					self.damage_player(attack_sprite.owner.attack_damage, weapon_type)
-					# To prevent multiple hits per attack, we rely on player's invincibility duration
+				# Use hitbox for more accurate collision if available, otherwise rect
+				collision_rect = attack_sprite.hitbox if hasattr(attack_sprite, 'hitbox') else attack_sprite.rect
+				if collision_rect.colliderect(self.player.hitbox):
+					# Check if the sprite has an owner (required for damage calc)
+					if hasattr(attack_sprite, 'owner') and attack_sprite.owner:
+						weapon_type = attack_sprite.owner.weapon if hasattr(attack_sprite.owner, 'weapon') else 'weapon'
+						self.damage_player(attack_sprite.owner.attack_damage, weapon_type)
+						
+						# If it's a magic projectile, kill it on hit
+						if getattr(attack_sprite, 'sprite_type', '') == 'magic':
+							attack_sprite.kill()
+					# If it doesn't have an owner but has its own damage (optional future-proofing)
+					elif hasattr(attack_sprite, 'damage'):
+						self.damage_player(attack_sprite.damage, 'weapon')
 
 	def damage_player(self,amount,attack_type):
 		if self.player.vulnerable:
+			if attack_type == 'flame':
+				# Capture position at start of warning
+				pos = self.player.rect.center
+				
+				# 1. WARNING PHASE (0.5s): Frames 11 -> 08 (small fire)
+				self.animation_player.create_particles('flame_warning', pos, [self.visible_sprites])
+				
+				def eruption_logic(p_pos, p_amount):
+					# 2. ERUPTION PHASE (0.7s): Frames 07 -> 00 (big fire)
+					# TRIGGER DAMAGE AND BURN NOW
+					dist = pygame.math.Vector2(self.player.rect.center).distance_to(p_pos)
+					if dist < 65:
+						self.apply_flame_damage(p_amount)
+						# Trigger red flicker only on initial hit
+						self.player.red_flicker = True
+						self.player.red_flicker_start_time = pygame.time.get_ticks()
+
+					self.animation_player.create_particles('flame_erupt', p_pos, [self.visible_sprites])
+
+				# Schedule eruption after 500ms warning
+				self.telegraphs.append({'time': pygame.time.get_ticks() + 500, 'callback': eruption_logic, 'args': (pos, amount)})
+				return
+
 			actual_damage = amount - self.player.armor
 			if actual_damage < 0: actual_damage = 0
 			
-			self.player.health -= actual_damage
-			self.player.target_health -= actual_damage
-			if self.player.health < 0: self.player.health = 0
-			if self.player.target_health < 0: self.player.target_health = 0
+			from player import GOD_MODE
+			if not GOD_MODE:
+				self.player.health -= actual_damage
+				self.player.target_health -= actual_damage
+				if self.player.health < 0: self.player.health = 0
+				if self.player.target_health < 0: self.player.target_health = 0
 			
 			self.player.vulnerable = False
 			self.player.hurt_time = pygame.time.get_ticks()
@@ -295,8 +367,30 @@ class Level:
 					self.player.knockback_vector = pygame.math.Vector2(0, 20)
 				
 				self.player.knockback_time = pygame.time.get_ticks()
+			elif attack_type == 'frog':
+				self.player.is_slowed = True
+				self.player.slow_start_time = pygame.time.get_ticks()
+			elif attack_type == 'lance':
+				# Triple slash: center + above + below
+				cx, cy = self.player.rect.center
+				self.animation_player.create_particles('lance', (cx, cy), [self.visible_sprites])
+				self.animation_player.create_particles('lance_small', (cx, cy - 25), [self.visible_sprites])
+				self.animation_player.create_particles('lance_small', (cx, cy + 25), [self.visible_sprites])
 			elif attack_type != 'none':
 				self.animation_player.create_particles(attack_type, self.player.rect.center, [self.visible_sprites])
+
+	def apply_flame_damage(self, amount):
+		dmg = amount - self.player.armor
+		if dmg < 1: dmg = 1
+		
+		from player import GOD_MODE
+		if not GOD_MODE:
+			self.player.health -= dmg
+			self.player.target_health -= dmg
+			
+		self.player.is_burning = True
+		self.player.burn_start_time = pygame.time.get_ticks()
+		self.player.last_burn_damage_time = self.player.burn_start_time
 
 	def trigger_death_particles(self, pos, particle_type):
 		self.animation_player.create_particles(particle_type, pos, [self.visible_sprites])
@@ -353,14 +447,16 @@ class Level:
 	def restart_game(self):
 		self.player.health = self.player.stats['health']
 		self.player.target_health = self.player.health
-		self.player.potions_left = 3
-		self.player.unlocked_weapons = ['sword', 'axe']
+		self.player.potions_left = 5
+		self.player.unlocked_weapons = ['sword']
 		self.player.weapon_index = 0
 		self.player.weapon = self.player.unlocked_weapons[self.player.weapon_index]
 		self.player.vulnerable = True
 		self.player.frozen = False
 		self.game_over_selection = 0
-		self.switch_map('second')
+		self.win_selection = 0
+		self.status = 'playing'
+		self.switch_map('first')
 
 	def game_over_logic(self, events):
 		self.ui.show_game_over(self.game_over_selection)
@@ -375,18 +471,43 @@ class Level:
 					if self.game_over_selection == 0:
 						self.restart_game()
 					elif self.game_over_selection == 1:
-						import sys
-						pygame.quit()
-						sys.exit()
+						self.status = 'back_to_menu'
+
+	def win_logic(self, events):
+		self.ui.show_win(self.win_selection)
+		
+		for event in events:
+			if event.type == pygame.KEYDOWN:
+				if event.key == pygame.K_a or event.key == pygame.K_LEFT:
+					self.win_selection = 0
+				elif event.key == pygame.K_d or event.key == pygame.K_RIGHT:
+					self.win_selection = 1
+				elif event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
+					if self.win_selection == 0:
+						self.restart_game()
+					elif self.win_selection == 1:
+						self.status = 'back_to_menu'
 
 	def run(self, events=None):
 		if events is None: events = []
 		
-		if hasattr(self, 'player') and self.player.health <= 0:
+		# Check for win condition
+		if self.current_map == 'fourth' and self.current_monsters <= 0 and self.reward_given:
+			if self.status != 'win':
+				self.status = 'win'
 			self.visible_sprites.custom_draw(self.player)
-			self.ui.display(self.player, MAPS[self.current_map]['index'], self.current_monsters, self.total_monsters)
+			self.win_logic(events)
+			return
+
+		if hasattr(self, 'player') and self.player.health <= 0:
+			if self.status != 'game_over':
+				self.status = 'game_over'
+			self.visible_sprites.custom_draw(self.player)
+			self.ui.display(self.player, MAPS[self.current_map]['index'], self.current_monsters, self.total_monsters, (pygame.time.get_ticks() - self.start_time) // 1000)
 			self.game_over_logic(events)
 			return
+		
+		self.status = 'playing'
 
 		# Wire boss2 summon references once player is ready
 		if hasattr(self, '_pending_boss2') and self._pending_boss2 and hasattr(self, 'player'):
@@ -398,6 +519,13 @@ class Level:
 			self._pending_boss2 = None
 
 		# update and draw the game
+		# Process telegraphs
+		current_time = pygame.time.get_ticks()
+		for telegraph in self.telegraphs[:]:
+			if current_time >= telegraph['time']:
+				telegraph['callback'](*telegraph['args'])
+				self.telegraphs.remove(telegraph)
+
 		self.visible_sprites.custom_draw(self.player)
 		self.visible_sprites.update()
 		self.visible_sprites.enemy_update(self.player)
@@ -405,7 +533,8 @@ class Level:
 		self.enemy_attack_logic()
 		self.update_gate_state()
 		self.check_map_transition()
-		self.ui.display(self.player, MAPS[self.current_map]['index'], self.current_monsters, self.total_monsters)
+		elapsed_time = (pygame.time.get_ticks() - self.start_time) // 1000
+		self.ui.display(self.player, MAPS[self.current_map]['index'], self.current_monsters, self.total_monsters, elapsed_time)
 		self.display_reward_logic(events)
 
 

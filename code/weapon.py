@@ -15,7 +15,13 @@ class Weapon(pygame.sprite.Sprite):
 		
 		# scale 
 		is_boss1 = getattr(owner, 'monster_name', None) == 'boss'
-		self.scale = 1.2 if is_boss1 else 0.84
+		is_boss3 = getattr(owner, 'monster_name', None) == 'boss3'
+		if is_boss1:
+			self.scale = 1.2
+		elif is_boss3:
+			self.scale = 1.0  # Lance for Sukuna
+		else:
+			self.scale = 0.84
 		self.image = pygame.transform.scale_by(self.image, self.scale)
 		
 		# placement
@@ -29,7 +35,7 @@ class Weapon(pygame.sprite.Sprite):
 		direction = self.owner.status.split('_')[0]
 		
 		# Boss offset logic: 10px further away
-		is_boss = getattr(self.owner, 'monster_name', None) in ['boss', 'boss2']
+		is_boss = getattr(self.owner, 'monster_name', None) in ['boss', 'boss2', 'boss3']
 		offset_x = 10 if is_boss else 0
 		offset_y = -10 if is_boss else 0
 

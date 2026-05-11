@@ -29,17 +29,22 @@ class Entity(pygame.sprite.Sprite):
 		if direction == 'horizontal':
 			for sprite in self.obstacle_sprites:
 				if sprite is not self and sprite.hitbox.colliderect(self.hitbox):
-					if self.direction.x > 0: # moving right
+					# Use the smallest overlap to determine the collision side
+					overlap_left = self.hitbox.right - sprite.hitbox.left
+					overlap_right = sprite.hitbox.right - self.hitbox.left
+					if overlap_left < overlap_right:
 						self.hitbox.right = sprite.hitbox.left
-					if self.direction.x < 0: # moving left
+					else:
 						self.hitbox.left = sprite.hitbox.right
 
 		if direction == 'vertical':
 			for sprite in self.obstacle_sprites:
 				if sprite is not self and sprite.hitbox.colliderect(self.hitbox):
-					if self.direction.y > 0: # moving down
+					overlap_top = self.hitbox.bottom - sprite.hitbox.top
+					overlap_bottom = sprite.hitbox.bottom - self.hitbox.top
+					if overlap_top < overlap_bottom:
 						self.hitbox.bottom = sprite.hitbox.top
-					if self.direction.y < 0: # moving up
+					else:
 						self.hitbox.top = sprite.hitbox.bottom
 
 	def wave_value(self):

@@ -48,13 +48,13 @@ class DivineDog(Entity):
 
         # ── Stats ─────────────────────────────────────────────────────────────
         if variant == 'totality':
-            self.max_health = 180
-            self.speed      = 3.2
+            self.max_health = 220
+            self.speed      = 3.5
             self.attack_damage = 18
             self.attack_radius = 100
         else:
-            self.max_health = 80
-            self.speed      = 2.8
+            self.max_health = 100
+            self.speed      = 3.1
             self.attack_damage = 8
             self.attack_radius = 80
 
@@ -77,7 +77,7 @@ class DivineDog(Entity):
 
         # ── Orbit ─────────────────────────────────────────────────────────────
         self.orbit_angle  = 0.0 if variant == 'white' else math.pi
-        self.orbit_radius = 180
+        self.orbit_radius = 144
         self.orbit_speed  = 1.2  # rad/s
 
         # ── Find clear spot near owner ────────────────────────────────────────
@@ -253,6 +253,10 @@ class DivineDog(Entity):
                 nc, nr = curr_c + dc, curr_r + dr
                 if 0 <= nc < COLS and 0 <= nr < ROWS:
                     if grid[nr][nc] == 0 and (nc, nr) not in visited:
+                        # Prevent corner cutting through walls
+                        if dc != 0 and dr != 0:
+                            if grid[curr_r][nc] == 1 or grid[nr][curr_c] == 1:
+                                continue
                         visited[(nc, nr)] = (curr_c, curr_r)
                         queue.append((nc, nr))
 
@@ -398,10 +402,12 @@ class DivineDog(Entity):
             
             # Axe freeze effect
             if player.weapon == 'axe':
-                self.freeze()
-                if self.animation_player:
-                    frozen_pos = (self.rect.midbottom[0], self.rect.midbottom[1] + 20)
-                    self.animation_player.create_particles('frozen', frozen_pos, [self.visible_sprites], pos_type='midbottom')
+                import random
+                if random.random() < 0.2:
+                    self.freeze()
+                    if self.animation_player:
+                        frozen_pos = (self.rect.midbottom[0], self.rect.midbottom[1] + 20)
+                        self.animation_player.create_particles('frozen', frozen_pos, [self.visible_sprites], pos_type='midbottom')
 
             if hasattr(self.owner, 'summon_aggro'):
                 self.owner.summon_aggro()
@@ -631,7 +637,7 @@ class Bull(DivineDog):
         self.max_health = 150
         self.health = 150
         self.speed = 1.5 # Slower speed
-        self.attack_damage = 25 # High damage
+        self.attack_damage = 15 # Reduced from 25
         self.attack_radius = 80
         
         # Override image

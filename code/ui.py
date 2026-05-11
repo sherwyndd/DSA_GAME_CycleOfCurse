@@ -43,6 +43,24 @@ class UI:
 		self.ice_icon = remove_background_floodfill(self.ice_icon, threshold=40)
 		self.ice_icon = pygame.transform.scale(self.ice_icon, (30, 30))
 
+		# Status icons
+		try:
+			self.burn_icon = pygame.image.load('../graphics/14 - upgrade/14 - upgrade/graphics/particles/flame/frames/0.png').convert_alpha()
+			self.burn_icon = remove_background_floodfill(self.burn_icon, threshold=40)
+			self.burn_icon = pygame.transform.scale(self.burn_icon, (25, 25))
+		except:
+			self.burn_icon = pygame.Surface((25,25)); self.burn_icon.fill('orange')
+
+		# Slow icon (spiral)
+		self.slow_icon = pygame.Surface((25,25), pygame.SRCALPHA)
+		import math
+		for i in range(100):
+			angle = 0.1 * i
+			x = 12 + (angle * math.cos(angle))
+			y = 12 + (angle * math.sin(angle))
+			if 0 <= x < 25 and 0 <= y < 25:
+				self.slow_icon.set_at((int(x), int(y)), (150, 50, 255)) # Purple
+
 
 	def show_bar(self,current,max_amount,bg_rect,color, target_amount = None, border_radius = 5):
 		# draw bg 
@@ -171,15 +189,48 @@ class UI:
 		count_rect = count_surf.get_rect(center = count_box.center)
 		self.display_surface.blit(count_surf, count_rect)
 
-	def display(self,player,map_index, monster_count, total_monsters):
+	def show_timer(self, elapsed_seconds):
+		# Format time as mm:ss
+		minutes = int(elapsed_seconds // 60)
+		seconds = int(elapsed_seconds % 60)
+		time_str = f'{minutes:02}:{seconds:02}'
+		
+		# Position: Top right
+		text_surf = self.font.render(time_str, False, TEXT_COLOR)
+		x = self.display_surface.get_size()[0] - 20
+		y = 20
+		text_rect = text_surf.get_rect(topright = (x, y))
+		
+		# Draw background box
+		box_rect = text_rect.inflate(20, 10)
+		pygame.draw.rect(self.display_surface, UI_BG_COLOR, box_rect, border_radius = 5)
+		pygame.draw.rect(self.display_surface, UI_BORDER_COLOR, box_rect, 3, border_radius = 5)
+		
+		# Draw text
+		self.display_surface.blit(text_surf, text_rect)
+
+	def display(self,player,map_index, monster_count, total_monsters, elapsed_time):
 		self.show_bar(player.health,player.stats['health'],self.health_bar_rect,HEALTH_COLOR, player.target_health)
 		self.show_armor_bar(player.armor,player.stats['armor'],self.armor_bar_rect,ARMOR_COLOR)
 		self.show_monster_count(monster_count, total_monsters)
+		self.show_timer(elapsed_time)
 
 		self.show_map_index(map_index)
 
 		self.weapon_overlay(player.weapon,not player.can_switch_weapon)
 		self.magic_overlay(player.magic_index,not player.can_switch_magic,player)
+		
+		# Status effect icons next to health bar
+		icon_x = self.health_bar_rect.right + 10
+		icon_y = self.health_bar_rect.top
+		
+		if player.is_burning:
+			self.display_surface.blit(self.burn_icon, (icon_x, icon_y))
+			icon_x += 30
+		
+		if player.is_slowed:
+			self.display_surface.blit(self.slow_icon, (icon_x, icon_y))
+			icon_x += 30
 
 		# Effect icons preview (Small box at top-left of weapon box)
 		if player.weapon in ('sword', 'axe'):
@@ -214,12 +265,12 @@ class UI:
 		text_rect = text_surf.get_rect(center = (box_rect.centerx, box_rect.top + 60))
 		self.display_surface.blit(text_surf, text_rect)
 		
-		btn_w, btn_h = 180, 60
+		btn_w, btn_h = 220, 60
 		try_again_rect = pygame.Rect(0, 0, btn_w, btn_h)
-		try_again_rect.center = (box_rect.centerx - 110, box_rect.bottom - 80)
+		try_again_rect.center = (box_rect.centerx - 120, box_rect.bottom - 80)
 		
 		exit_rect = pygame.Rect(0, 0, btn_w, btn_h)
-		exit_rect.center = (box_rect.centerx + 110, box_rect.bottom - 80)
+		exit_rect.center = (box_rect.centerx + 120, box_rect.bottom - 80)
 		
 		color0 = UI_BORDER_COLOR_ACTIVE if selection == 0 else UI_BORDER_COLOR
 		pygame.draw.rect(self.display_surface, UI_BG_COLOR, try_again_rect, border_radius = 5)
@@ -231,6 +282,47 @@ class UI:
 		color1 = UI_BORDER_COLOR_ACTIVE if selection == 1 else UI_BORDER_COLOR
 		pygame.draw.rect(self.display_surface, UI_BG_COLOR, exit_rect, border_radius = 5)
 		pygame.draw.rect(self.display_surface, color1, exit_rect, 3, border_radius = 5)
-		exit_surf = self.font.render('EXIT', False, TEXT_COLOR)
+		exit_surf = self.font.render('BACK TO MENU', False, TEXT_COLOR)
+		exit_rect_text = exit_surf.get_rect(center = exit_rect.center)
+		self.display_surface.blit(exit_surf, exit_rect_text)
+
+	def show_win(self, selection):
+		overlay = pygame.Surface((WIDTH, HEIGHT))
+		overlay.set_alpha(150)
+		overlay.fill('black')
+		self.display_surface.blit(overlay, (0,0))
+		
+		box_rect = pygame.Rect(0,0,600,350)
+		box_rect.center = (WIDTH // 2, HEIGHT // 2)
+		pygame.draw.rect(self.display_surface, UI_BG_COLOR, box_rect, border_radius = 15)
+		pygame.draw.rect(self.display_surface, 'gold', box_rect, 5, border_radius = 15)
+		
+		title_font = pygame.font.Font(UI_FONT, 35)
+		text_surf = title_font.render('CONGRATULATIONS!', False, 'gold')
+		text_rect = text_surf.get_rect(center = (box_rect.centerx, box_rect.top + 60))
+		self.display_surface.blit(text_surf, text_rect)
+		
+		sub_surf = self.font.render('YOU HAVE BEATEN THE CURSE', False, TEXT_COLOR)
+		sub_rect = sub_surf.get_rect(center = (box_rect.centerx, box_rect.top + 110))
+		self.display_surface.blit(sub_surf, sub_rect)
+		
+		btn_w, btn_h = 240, 60
+		try_again_rect = pygame.Rect(0, 0, btn_w, btn_h)
+		try_again_rect.center = (box_rect.centerx - 140, box_rect.bottom - 80)
+		
+		exit_rect = pygame.Rect(0, 0, btn_w, btn_h)
+		exit_rect.center = (box_rect.centerx + 140, box_rect.bottom - 80)
+		
+		color0 = UI_BORDER_COLOR_ACTIVE if selection == 0 else UI_BORDER_COLOR
+		pygame.draw.rect(self.display_surface, UI_BG_COLOR, try_again_rect, border_radius = 5)
+		pygame.draw.rect(self.display_surface, color0, try_again_rect, 3, border_radius = 5)
+		try_surf = self.font.render('PLAY AGAIN', False, TEXT_COLOR)
+		try_rect = try_surf.get_rect(center = try_again_rect.center)
+		self.display_surface.blit(try_surf, try_rect)
+		
+		color1 = UI_BORDER_COLOR_ACTIVE if selection == 1 else UI_BORDER_COLOR
+		pygame.draw.rect(self.display_surface, UI_BG_COLOR, exit_rect, border_radius = 5)
+		pygame.draw.rect(self.display_surface, color1, exit_rect, 3, border_radius = 5)
+		exit_surf = self.font.render('BACK TO MENU', False, TEXT_COLOR)
 		exit_rect_text = exit_surf.get_rect(center = exit_rect.center)
 		self.display_surface.blit(exit_surf, exit_rect_text)
