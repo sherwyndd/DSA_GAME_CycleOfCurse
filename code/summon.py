@@ -572,18 +572,19 @@ class Frog(DivineDog):
     def _try_attack(self):
         now = pygame.time.get_ticks()
         dist = (pygame.math.Vector2(self.player.rect.center) - pygame.math.Vector2(self.hitbox.center)).magnitude()
-        if dist < self.attack_radius and now - self.last_attack_time > 1000: # Regular damage
+        if dist < self.attack_radius and now - self.last_attack_time > 1000:
             self.last_attack_time = now
-            
-            # Slow effect only every 3s
+
+            # Slow on every successful hit (refresh duration)
+            self.player.is_slowed = True
+            self.player.slow_start_time = now
+
             if not hasattr(self, 'last_effect_time'): self.last_effect_time = 0
             if now - self.last_effect_time > 3000:
                 self.last_effect_time = now
                 self.damage_player(self.attack_damage, 'none')
                 if self.animation_player:
                     self.animation_player.create_particles('frog_hit', self.player.rect.center, [self.visible_sprites])
-                self.player.is_slowed = True
-                self.player.slow_time = now
             else:
                 self.damage_player(self.attack_damage, 'none')
 

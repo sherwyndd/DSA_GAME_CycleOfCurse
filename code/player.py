@@ -11,7 +11,7 @@ class GhostNode:
 		self.alpha = alpha
 		self.next = None
 
-GOD_MODE = True
+GOD_MODE = False
 
 class Player(Entity):
 	def __init__(self,pos,groups,obstacle_sprites,create_attack,destroy_attack):
@@ -95,9 +95,9 @@ class Player(Entity):
 		self.freeze_time = 0
 		self.freeze_duration = 1000
 
-		# slow effect
+		# slow effect (frog / sources use slow_start_time for duration)
 		self.is_slowed = False
-		self.slow_time = 0
+		self.slow_start_time = 0
 		self.slow_duration = 3000
 		# knockback
 		self.knockback_vector = pygame.math.Vector2()
@@ -111,13 +111,13 @@ class Player(Entity):
 		self.burn_damage_interval = 600
 		self.last_burn_damage_time = 0
 
-		self.is_slowed = False
-		self.slow_start_time = 0
-		self.slow_duration = 3000
-
 		self.red_flicker = False
 		self.red_flicker_start_time = 0
 		self.red_flicker_duration = 600
+
+		self.hit_flash = False
+		self.hit_flash_time = 0
+		self.hit_flash_duration = 150
 
 	# Flood fill moved to support.py
 
@@ -346,7 +346,7 @@ class Player(Entity):
 				self.can_dash = True
 
 		if self.is_slowed:
-			if current_time - self.slow_time >= self.slow_duration:
+			if current_time - self.slow_start_time >= self.slow_duration:
 				self.is_slowed = False
 
 		if not self.can_switch_weapon:
@@ -399,12 +399,23 @@ class Player(Entity):
 			if current_time - self.red_flicker_start_time < self.red_flicker_duration:
 				if (current_time // 100) % 2 == 0:
 					# Create a red tinted version
-					self.image = self.image.copy() # Copy to avoid modifying original frames
+					self.image = self.image.copy() 
 					red_surf = pygame.Surface(self.image.get_size()).convert_alpha()
 					red_surf.fill((255, 50, 50, 150))
 					self.image.blit(red_surf, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
 			else:
 				self.red_flicker = False
+
+		# Apply hit flash (White tint)
+		if self.hit_flash:
+			current_time = pygame.time.get_ticks()
+			if current_time - self.hit_flash_time < self.hit_flash_duration:
+				self.image = self.image.copy()
+				white_surf = pygame.Surface(self.image.get_size()).convert_alpha()
+				white_surf.fill((255, 255, 255, 200))
+				self.image.blit(white_surf, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+			else:
+				self.hit_flash = False
 
 		self.rect = self.image.get_rect(center = self.hitbox.center)
 
@@ -488,10 +499,11 @@ class Player(Entity):
 		self.get_status()
 		self.animate()
 		
-		# gradual healing
-		if self.health < self.target_health:
-			self.health += (self.target_health - self.health) / 50 # smooth transition (approx 2.5s)
-			if self.target_health - self.health < 0.1:
+		# gradual health transition (both healing and damage)
+		if self.health != self.target_health:
+			diff = self.target_health - self.health
+			self.health += diff / 15.0 # Smoother and faster than / 50
+			if abs(self.target_health - self.health) < 0.1:
 				self.health = self.target_health
 
 		# burn effect
@@ -505,11 +517,6 @@ class Player(Entity):
 					self.last_burn_damage_time = current_time
 			else:
 				self.is_burning = False
-
-		# slow effect
-		if self.is_slowed:
-			if current_time - self.slow_start_time >= self.slow_duration:
-				self.is_slowed = False
 
 		# ghost update
 		self.update_ghosts()

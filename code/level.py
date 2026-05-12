@@ -347,13 +347,14 @@ class Level:
 			
 			from player import GOD_MODE
 			if not GOD_MODE:
-				self.player.health -= actual_damage
 				self.player.target_health -= actual_damage
-				if self.player.health < 0: self.player.health = 0
 				if self.player.target_health < 0: self.player.target_health = 0
+				# self.player.health stays the same, will catch up in update()
 			
 			self.player.vulnerable = False
 			self.player.hurt_time = pygame.time.get_ticks()
+			self.player.hit_flash = True
+			self.player.hit_flash_time = pygame.time.get_ticks()
 
 			if attack_type == 'axe':
 				if random.random() < 0.4:
@@ -392,12 +393,14 @@ class Level:
 		
 		from player import GOD_MODE
 		if not GOD_MODE:
-			self.player.health -= dmg
 			self.player.target_health -= dmg
+			if self.player.target_health < 0: self.player.target_health = 0
 			
 		self.player.is_burning = True
 		self.player.burn_start_time = pygame.time.get_ticks()
 		self.player.last_burn_damage_time = self.player.burn_start_time
+		self.player.hit_flash = True
+		self.player.hit_flash_time = pygame.time.get_ticks()
 
 	def trigger_death_particles(self, pos, particle_type):
 		self.animation_player.create_particles(particle_type, pos, [self.visible_sprites])

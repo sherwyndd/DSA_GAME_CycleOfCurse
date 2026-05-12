@@ -51,43 +51,81 @@ class UI:
 		except:
 			self.burn_icon = pygame.Surface((25,25)); self.burn_icon.fill('orange')
 
-		# Slow icon (spiral)
-		self.slow_icon = pygame.Surface((25,25), pygame.SRCALPHA)
+		# Slow icon: purple spiral, compact height matching health bar
 		import math
-		for i in range(100):
-			angle = 0.1 * i
-			x = 12 + (angle * math.cos(angle))
-			y = 12 + (angle * math.sin(angle))
-			if 0 <= x < 25 and 0 <= y < 25:
-				self.slow_icon.set_at((int(x), int(y)), (150, 50, 255)) # Purple
+		sz = BAR_HEIGHT
+		self.slow_icon = pygame.Surface((sz, sz), pygame.SRCALPHA)
+		cx = cy = (sz - 1) * 0.5
+		max_r = sz * 0.45
+		purple = (180, 100, 240)
+		stroke = (130, 60, 200)
+		prev_pt = None
+		steps = 56
+		for i in range(steps):
+			t = i / max(steps - 1, 1)
+			angle = t * math.pi * 3.5
+			r = t * max_r
+			x = int(cx + r * math.cos(angle))
+			y = int(cy + r * math.sin(angle))
+			if prev_pt is not None:
+				pygame.draw.line(self.slow_icon, stroke, prev_pt, (x, y), max(1, sz // 14))
+			prev_pt = (x, y)
+			if 0 <= x < sz and 0 <= y < sz:
+				self.slow_icon.set_at((x, y), purple)
 
 
 	def show_bar(self,current,max_amount,bg_rect,color, target_amount = None, border_radius = 5):
 		# draw bg 
 		pygame.draw.rect(self.display_surface,UI_BG_COLOR,bg_rect, border_radius = border_radius)
 
-		# drawing target/faint bar
-		if target_amount and target_amount > current:
-			target_ratio = target_amount / max_amount
-			target_width = bg_rect.width * target_ratio
-			target_rect = bg_rect.copy()
-			target_rect.width = target_width
-			# Faint color (e.g., darker red for health)
-			faint_color = '#770000' if color == HEALTH_COLOR else color
-			pygame.draw.rect(self.display_surface,faint_color,target_rect, border_radius = border_radius)
+		# If target_amount is provided, we are doing a transition
+		if target_amount is not None:
+			# 1. HEALING: target > current
+			# We show a dark version of the color representing where health is GOING
+			if target_amount > current:
+				target_ratio = target_amount / max_amount
+				target_width = bg_rect.width * target_ratio
+				target_rect = bg_rect.copy()
+				target_rect.width = target_width
+				faint_color = '#770000' if color == HEALTH_COLOR else color
+				pygame.draw.rect(self.display_surface,faint_color,target_rect, border_radius = border_radius)
+				
+				# Then draw the current health on top
+				ratio = current / max_amount
+				current_width = bg_rect.width * ratio
+				current_rect = bg_rect.copy()
+				current_rect.width = current_width
+				if current_width > 0:
+					pygame.draw.rect(self.display_surface,color,current_rect, border_radius = border_radius)
 
-		# converting stat to pixel
-		if max_amount > 0:
-			ratio = current / max_amount
+			# 2. DAMAGE: target < current
+			# We show current (the "ghost" bar) as a desaturated or white color, 
+			# and target as the actual color
+			else:
+				# Draw the "ghost" bar (where health was)
+				ratio = current / max_amount
+				ghost_width = bg_rect.width * ratio
+				ghost_rect = bg_rect.copy()
+				ghost_rect.width = ghost_width
+				ghost_color = '#EEEEEE' # White-ish ghost bar
+				pygame.draw.rect(self.display_surface,ghost_color,ghost_rect, border_radius = border_radius)
+
+				# Draw the "real" health (where health is now)
+				target_ratio = target_amount / max_amount
+				target_width = bg_rect.width * target_ratio
+				target_rect = bg_rect.copy()
+				target_rect.width = target_width
+				if target_width > 0:
+					pygame.draw.rect(self.display_surface,color,target_rect, border_radius = border_radius)
 		else:
-			ratio = 0
-		current_width = bg_rect.width * ratio
-		current_rect = bg_rect.copy()
-		current_rect.width = current_width
+			# No transition, just draw normally
+			ratio = current / max_amount
+			current_width = bg_rect.width * ratio
+			current_rect = bg_rect.copy()
+			current_rect.width = current_width
+			if current_width > 0:
+				pygame.draw.rect(self.display_surface,color,current_rect, border_radius = border_radius)
 
-		# drawing the bar
-		if current_width > 0:
-			pygame.draw.rect(self.display_surface,color,current_rect, border_radius = border_radius)
 		pygame.draw.rect(self.display_surface,UI_BORDER_COLOR,bg_rect,3, border_radius = border_radius)
 
 	def show_armor_bar(self, current, max_amount, bg_rect, color, border_radius = 5):
@@ -220,17 +258,17 @@ class UI:
 		self.weapon_overlay(player.weapon,not player.can_switch_weapon)
 		self.magic_overlay(player.magic_index,not player.can_switch_magic,player)
 		
-		# Status effect icons next to health bar
-		icon_x = self.health_bar_rect.right + 10
-		icon_y = self.health_bar_rect.top
+		# Status effect icons next to health bar (vertically centered on bar)
+		icon_x = self.health_bar_rect.right + 8
 		
 		if player.is_burning:
+			icon_y = self.health_bar_rect.centery - self.burn_icon.get_height() // 2
 			self.display_surface.blit(self.burn_icon, (icon_x, icon_y))
-			icon_x += 30
+			icon_x += self.burn_icon.get_width() + 4
 		
 		if player.is_slowed:
+			icon_y = self.health_bar_rect.centery - self.slow_icon.get_height() // 2
 			self.display_surface.blit(self.slow_icon, (icon_x, icon_y))
-			icon_x += 30
 
 		# Effect icons preview (Small box at top-left of weapon box)
 		if player.weapon in ('sword', 'axe'):
