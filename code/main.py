@@ -1,3 +1,19 @@
+"""
+Cycle of Curse: A DSA Game Project
+----------------------------------
+This is the main entry point for the game. 'Cycle of Curse' is an action-RPG 
+designed to demonstrate the practical application of Data Structures and 
+Algorithms (DSA) in a game environment.
+
+Key DSA Concepts implemented:
+1. BFS (Breadth-First Search): Advanced pathfinding for enemies and summons.
+2. Linked Lists: Used for the player's movement ghost/after-image effect.
+3. Sorting Algorithms: Y-Sorting in the camera group to handle depth rendering.
+4. FSM (Finite State Machines): Logic for player, enemy, and summon behaviors.
+5. Grid Mapping: Spatial partitioning for efficient collision and pathfinding.
+
+Developed by: [User Name] & AI Assistant
+"""
 import pygame, sys
 from settings import *
 from level import Level
@@ -16,7 +32,6 @@ class Game:
         self.leaderboard = Leaderboard()
         self.settings = Settings()
         self.level = None
-        self.record_saved = False
         self.font = pygame.font.Font(UI_FONT, 20)
 
     def check_controls_ready(self):
@@ -45,7 +60,6 @@ class Game:
                                 if self.check_controls_ready():
                                     self.level = Level()
                                     self.state = 'GAME'
-                                    self.record_saved = False
                                 else:
                                     # Show warning for 2 seconds (handled in state)
                                     self.warning_time = pygame.time.get_ticks()
@@ -82,21 +96,12 @@ class Game:
             elif self.state == 'GAME':
                 self.screen.fill('black')
                 self.level.run(events)
-                
-                # Check for game state changes from Level
-                if self.level.status == 'game_over' and not self.record_saved:
-                    # Save progress: Round index and time
-                    round_idx = MAPS[self.level.current_map]['index']
-                    elapsed_time = (pygame.time.get_ticks() - self.level.start_time) // 1000
-                    self.leaderboard.save_record(f'Round {round_idx}', elapsed_time)
-                    self.record_saved = True
-                
-                elif self.level.status == 'win' and not self.record_saved:
-                    elapsed_time = (pygame.time.get_ticks() - self.level.start_time) // 1000
-                    self.leaderboard.save_record('Win', elapsed_time)
-                    self.record_saved = True
-                
-                elif self.level.status == 'back_to_menu':
+
+                entry = self.level.consume_leaderboard_save()
+                if entry:
+                    self.leaderboard.save_record(entry['round'], entry['time'])
+
+                if self.level.status == 'back_to_menu':
                     self.state = 'MENU'
                     self.level = None
 

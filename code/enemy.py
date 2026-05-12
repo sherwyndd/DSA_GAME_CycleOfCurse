@@ -1,3 +1,15 @@
+"""
+Enemy Module
+------------
+Defines the Enemy class and its AI behaviors.
+
+DSA Highlights:
+- BFS Pathfinding: Uses a grid-based Breadth-First Search to find the 
+  shortest path to the target while avoiding solid obstacles.
+- Spatial Grid: Maps the game world into a tile grid for BFS calculations.
+- Dynamic Targeting: AI tracks multiple potential targets (Player or Summons) 
+  and prioritizes based on distance.
+"""
 import pygame
 import math
 import random
@@ -6,12 +18,13 @@ from entity import Entity
 from support import *
 
 class Enemy(Entity):
-	def __init__(self, monster_name, pos, groups, obstacle_sprites, damage_player, trigger_death_particles, create_attack = None, destroy_attack = None, create_projectile = None, animation_player = None, particle_groups = None):
+	def __init__(self, monster_name, pos, groups, obstacle_sprites, damage_player, trigger_death_particles, create_attack = None, destroy_attack = None, create_projectile = None, animation_player = None, particle_groups = None, level = None):
 
 		# general setup
 		super().__init__(groups)
 		self.sprite_type = 'enemy'
 		self.monster_name = monster_name
+		self.level = level  # Reference to level for updating total_monsters
 		self.import_graphics(monster_name)
 		self.status = 'idle'
 		self.image = self.animations[self.status][0]
@@ -31,6 +44,8 @@ class Enemy(Entity):
 		self.attack_radius = self.monster_info['attack_radius']
 		self.notice_radius = self.monster_info['notice_radius']
 		self.attack_type = self.monster_info['attack_type']
+		self.exp_reward = self.monster_info.get('exp', 0)
+		self.exp_awarded = False
 
 		# player interaction
 		self.can_attack = True
@@ -75,6 +90,7 @@ class Enemy(Entity):
 			self._fusion_active  = False
 			self._frog_total_count = 0       # Track total frogs ever spawned
 			self._frog_waves_done = 0        # Track completed frog waves (each wave = 2 frogs spawned)
+			self._frog_summon_locked = False  # If first 2 frogs die, stop summoning frogs
 			self._bull_phase = False          # True after 2 frog waves, enables bull priority
 			self._bull_summoned = False       # True once bull has been summoned
 			self._max_summons    = 2        # Max core slots (dogs/totality/bull)
@@ -267,26 +283,38 @@ class Enemy(Entity):
 				'attack': [sprite]
 			}
 
-	def get_player_distance_direction(self, player):
+	def get_target_distance_direction(self, targets):
+		if not isinstance(targets, list): targets = [targets]
+		nearest_target = None
+		min_dist = 9999
+		
 		enemy_vec = pygame.math.Vector2(self.rect.center)
-		player_vec = pygame.math.Vector2(player.rect.center)
-		distance = (player_vec - enemy_vec).magnitude()
+		for target in targets:
+			if not target.alive(): continue
+			target_vec = pygame.math.Vector2(target.rect.center)
+			dist = (target_vec - enemy_vec).magnitude()
+			if dist < min_dist:
+				min_dist = dist
+				nearest_target = target
+		
+		if nearest_target:
+			target_vec = pygame.math.Vector2(nearest_target.rect.center)
+			direction = (target_vec - enemy_vec).normalize() if (target_vec - enemy_vec).magnitude() > 0 else pygame.math.Vector2()
+			return (min_dist, direction, nearest_target)
+		
+		return (9999, pygame.math.Vector2(), None)
 
-		if distance > 0:
-			direction = (player_vec - enemy_vec).normalize()
-		else:
-			direction = pygame.math.Vector2()
+	def get_status(self, targets):
+		if not isinstance(targets, list): targets = [targets]
+		distance, direction, target = self.get_target_distance_direction(targets)
+		if not target: return
 
-		return (distance, direction)
-
-	def get_status(self, player):
 		if self.frozen:
 			if self.monster_name == 'boss2':
 				# Megumi's Technique Abrogation: Immediately break freeze with an attack
 				self.frozen = False
 				if self.can_attack:
 					# Force an attack immediately
-					distance, direction = self.get_player_distance_direction(player)
 					if abs(direction.x) > abs(direction.y):
 						self.status = 'right_attack' if direction.x > 0 else 'left_attack'
 					else:
@@ -295,7 +323,6 @@ class Enemy(Entity):
 					self.attack_time = pygame.time.get_ticks()
 					if self.create_attack: self.create_attack(self)
 		current_time = pygame.time.get_ticks()
-		distance = self.get_player_distance_direction(player)[0]
 
 		if self.frozen:
 			if 'move' in self.status: self.status = self.status.replace('move', 'idle')
@@ -308,7 +335,6 @@ class Enemy(Entity):
 			self.attack_time = current_time
 			self.special_attack_time = current_time
 			
-			_, direction = self.get_player_distance_direction(player)
 			# Clamp to cardinal
 			if abs(direction.x) > abs(direction.y):
 				direction = pygame.math.Vector2(1 if direction.x > 0 else -1, 0)
@@ -340,7 +366,6 @@ class Enemy(Entity):
 				self.frame_index = 0
 				# Determine direction for boss/boss2/slime attack
 				if self.monster_name in ['boss', 'boss2', 'boss3', 'slime', 'skeleton', 'skeleton-big', 'skeleton-shaman']:
-					direction = self.get_player_distance_direction(player)[1]
 					if abs(direction.x) > abs(direction.y):
 						self.status = 'right_attack' if direction.x > 0 else 'left_attack'
 					else:
@@ -352,16 +377,21 @@ class Enemy(Entity):
 					if self.monster_name in ['boss', 'boss2', 'boss3'] and self.create_attack:
 						self.create_attack(self)
 					else:
-						self.damage_player(self.attack_damage, self.attack_type)
+						if hasattr(target, 'get_damage') and getattr(target, 'sprite_type', '') == 'player_summon':
+							target.get_damage(self, self.attack_type)
+						else:
+							self.damage_player(self.attack_damage, self.attack_type)
 				else:
 					self.status = 'attack'
 					self.attacking = True
 					self.attack_time = pygame.time.get_ticks()
-					self.damage_player(self.attack_damage, self.attack_type)
+					if hasattr(target, 'get_damage') and getattr(target, 'sprite_type', '') == 'player_summon':
+						target.get_damage(self, self.attack_type)
+					else:
+						self.damage_player(self.attack_damage, self.attack_type)
 		
 		elif distance <= self.notice_radius:
 			if self.monster_name in ['boss', 'boss2', 'boss3', 'slime', 'skeleton', 'skeleton-big', 'skeleton-shaman']:
-				direction = self.get_player_distance_direction(player)[1]
 				if abs(direction.x) > abs(direction.y):
 					self.status = 'right_move' if direction.x > 0 else 'left_move'
 				else:
@@ -375,7 +405,8 @@ class Enemy(Entity):
 			else:
 				self.status = 'idle'
 
-	def actions(self, player):
+	def actions(self, targets):
+		if not isinstance(targets, list): targets = [targets]
 		if self.frozen:
 			self.direction = pygame.math.Vector2()
 			return
@@ -383,7 +414,7 @@ class Enemy(Entity):
 		if self.attacking:
 			self.direction = pygame.math.Vector2()
 		elif 'move' in self.status:
-			self.direction = self.get_bfs_direction(player)
+			self.direction = self.get_bfs_direction(targets)
 		else:
 			self.direction = pygame.math.Vector2()
 
@@ -480,7 +511,8 @@ class Enemy(Entity):
 
 	def get_damage(self, player, attack_type):
 		if self.vulnerable:
-			self.direction = self.get_player_direction(player)
+			# Even if the 'player' argument is a summon, we want to know its direction
+			self.direction = self.get_target_direction(player)
 			if attack_type == 'weapon':
 				self.health -= player.get_full_weapon_damage()
 				
@@ -506,26 +538,27 @@ class Enemy(Entity):
 		self.freeze_time = pygame.time.get_ticks()
 		self.direction = pygame.math.Vector2()
 
-	def get_player_direction(self, player):
-		enemy_vec = pygame.math.Vector2(self.rect.center)
-		player_vec = pygame.math.Vector2(player.rect.center)
-		distance = (player_vec - enemy_vec).magnitude()
-		if distance > 0:
-			return (player_vec - enemy_vec).normalize()
-		return pygame.math.Vector2()
+	def get_target_direction(self, targets):
+		if not isinstance(targets, list): targets = [targets]
+		_, direction, _ = self.get_target_distance_direction(targets)
+		return direction
 
-	def get_bfs_direction(self, player):
+	def get_bfs_direction(self, targets):
+		if not isinstance(targets, list): targets = [targets]
+		_, _, target = self.get_target_distance_direction(targets)
+		if not target: return pygame.math.Vector2()
+
 		from collections import deque
 		start_c = int(self.rect.centerx // T_WIDTH)
 		start_r = int(self.rect.centery // T_HEIGHT)
-		target_c = int(player.rect.centerx // T_WIDTH)
-		target_r = int(player.rect.centery // T_HEIGHT)
+		target_c = int(target.rect.centerx // T_WIDTH)
+		target_r = int(target.rect.centery // T_HEIGHT)
 
 		grid = [[0 for _ in range(COLS)] for _ in range(ROWS)]
 		
 		# Mark obstacles (tiles and other enemies so they flank each other)
 		for sprite in self.obstacle_sprites:
-			if sprite is self or sprite is player:
+			if sprite is self or sprite in targets:
 				continue
 				
 			left_c = int(sprite.hitbox.left // T_WIDTH)
@@ -580,7 +613,7 @@ class Enemy(Entity):
 				if direction.magnitude() > 0:
 					return direction.normalize()
 					
-		return self.get_player_direction(player)
+		return self.get_target_direction(targets)
 
 	def summon_aggro(self):
 		"""Called when a divine dog is hit — makes all dogs attack."""
@@ -629,17 +662,23 @@ class Enemy(Entity):
 				if s.variant in ('black', 'white'):
 					s.begin_despawn()
 
-		# Summon Logic — Priority: 2 Dogs -> 2 Frogs -> Totality -> Bull -> 2 Frogs
+		# If the first frog wave (2 frogs) is fully dead, lock all future frog summons.
+		active_frogs = [s for s in self._summons if s.variant == 'frog']
+		if self._frog_total_count == 2 and len(active_frogs) == 0 and self._frog_waves_done < 2:
+			self._frog_summon_locked = True
+
+		# Summon Logic — Priority:
+		# 1) 2 dogs -> 2) 2 frogs (wave 1) -> 3) totality/bull rule -> 4) 2 frogs (wave 2)
 		if self.mana >= self._summon_cost * 0.8:
 			existing_variants = [s.variant for s in self._summons]
 			core_summons = [s for s in self._summons if s.variant in ('black', 'white', 'totality', 'bull')]
 			slots_needed = self._max_summons - len(core_summons)
-			active_frogs = [s for s in self._summons if s.variant == 'frog']
 
 			# 1. BLACK & WHITE DOGS
 			variants = ['white', 'black']
 			for v in variants:
-				if slots_needed <= 0 or self.mana < self._summon_cost: break
+				if slots_needed <= 0 or self.mana < self._summon_cost:
+					break
 				if v not in existing_variants and v not in self._dead_summons:
 					dog = DivineDog(
 						variant      = v,
@@ -651,55 +690,90 @@ class Enemy(Entity):
 						animation_player = self._summon_animation_player
 					)
 					self._summons.append(dog)
+					if self.level:
+						self.level.total_monsters += 1
 					self.mana -= self._summon_cost
 					slots_needed -= 1
 
-			# 2. FIRST 2 FROGS (Wave 1)
-			while len(active_frogs) < 2 and self._frog_total_count < 2 and self.mana >= self._summon_cost * 0.8:
-				from summon import Frog
-				frog = Frog(self, self._summon_player, self._summon_groups, self.obstacle_sprites, self._summon_damage, self._summon_animation_player)
-				self._summons.append(frog)
-				self.mana -= self._summon_cost * 0.8
-				self._frog_total_count += 1
-				active_frogs.append(frog)
+			# 2. FIRST 2 FROGS (Wave 1) - highest priority after dogs
+			active_frogs = [s for s in self._summons if s.variant == 'frog']
+			if not self._frog_summon_locked and self._frog_waves_done == 0:
+				while len(active_frogs) < 2 and self._frog_total_count < 2 and self.mana >= self._summon_cost * 0.8:
+					from summon import Frog
+					frog = Frog(self, self._summon_player, self._summon_groups, self.obstacle_sprites, self._summon_damage, self._summon_animation_player)
+					self._summons.append(frog)
+					if self.level:
+						self.level.total_monsters += 1
+					self.mana -= self._summon_cost * 0.8
+					self._frog_total_count += 1
+					active_frogs.append(frog)
+				if self._frog_total_count >= 2:
+					self._frog_waves_done = 1
 
-			# 3. TOTALITY (Requires both dogs dead)
-			if self._fusion_active and slots_needed > 0:
-				if 'totality' not in existing_variants and 'totality' not in self._dead_summons:
-					if self.mana >= self._summon_cost * 1.5:
-						dog = DivineDog(
-							variant      = 'totality',
-							owner        = self,
-							player       = self._summon_player,
-							groups       = self._summon_groups,
-							obstacle_sprites = self.obstacle_sprites,
-							damage_player   = self._summon_damage,
-							animation_player = self._summon_animation_player
-						)
-						self._summons.append(dog)
-						self.mana -= self._summon_cost * 1.5
-						slots_needed -= 1
+			# 3. TOTALITY / BULL PRIORITY RULE
+			# If mana is enough for Bull and at least one of two dogs is still alive -> prioritize Bull.
+			# Otherwise, when fusion is available and mana allows -> prioritize Totality.
+			existing_variants = [s.variant for s in self._summons]
+			core_summons = [s for s in self._summons if s.variant in ('black', 'white', 'totality', 'bull')]
+			slots_needed = self._max_summons - len(core_summons)
+			if slots_needed > 0:
+				can_totality = (
+					self._fusion_active and
+					'totality' not in existing_variants and
+					'totality' not in self._dead_summons and
+					self.mana >= self._summon_cost * 1.5
+				)
+				can_bull = (
+					not self._bull_summoned and
+					'bull' not in existing_variants and
+					'bull' not in self._dead_summons and
+					self.mana >= self._summon_cost * 1.2
+				)
+				dog_still_alive = ('black' in existing_variants) or ('white' in existing_variants)
 
-			# 4. BULL (If Totality condition not met or Totality already handled/dead)
-			if not self._bull_summoned and slots_needed > 0:
-				# Skip Totality if dogs aren't dead yet, proceed to Bull
-				if 'bull' not in existing_variants and 'bull' not in self._dead_summons:
-					if self.mana >= self._summon_cost * 1.2:
-						from summon import Bull
-						bull = Bull(self, self._summon_player, self._summon_groups, self.obstacle_sprites, self._summon_damage, self._summon_animation_player)
-						self._summons.append(bull)
-						self.mana -= self._summon_cost * 1.2
-						self._bull_summoned = True
-						slots_needed -= 1
+				if can_bull and dog_still_alive:
+					from summon import Bull
+					bull = Bull(self, self._summon_player, self._summon_groups, self.obstacle_sprites, self._summon_damage, self._summon_animation_player)
+					self._summons.append(bull)
+					if self.level:
+						self.level.total_monsters += 1
+					self.mana -= self._summon_cost * 1.2
+					self._bull_summoned = True
+				elif can_totality:
+					dog = DivineDog(
+						variant      = 'totality',
+						owner        = self,
+						player       = self._summon_player,
+						groups       = self._summon_groups,
+						obstacle_sprites = self.obstacle_sprites,
+						damage_player   = self._summon_damage,
+						animation_player = self._summon_animation_player
+					)
+					self._summons.append(dog)
+					self.mana -= self._summon_cost * 1.5
+				elif can_bull:
+					from summon import Bull
+					bull = Bull(self, self._summon_player, self._summon_groups, self.obstacle_sprites, self._summon_damage, self._summon_animation_player)
+					self._summons.append(bull)
+					if self.level:
+						self.level.total_monsters += 1
+					self.mana -= self._summon_cost * 1.2
+					self._bull_summoned = True
 
-			# 5. REMAINING 2 FROGS (Wave 2)
-			while len(active_frogs) < 2 and self._frog_total_count < 4 and self.mana >= self._summon_cost * 0.8:
-				from summon import Frog
-				frog = Frog(self, self._summon_player, self._summon_groups, self.obstacle_sprites, self._summon_damage, self._summon_animation_player)
-				self._summons.append(frog)
-				self.mana -= self._summon_cost * 0.8
-				self._frog_total_count += 1
-				active_frogs.append(frog)
+			# 4. SECOND 2 FROGS (Wave 2) only after bull appears
+			active_frogs = [s for s in self._summons if s.variant == 'frog']
+			if not self._frog_summon_locked and self._bull_summoned and self._frog_waves_done == 1:
+				while len(active_frogs) < 2 and self._frog_total_count < 4 and self.mana >= self._summon_cost * 0.8:
+					from summon import Frog
+					frog = Frog(self, self._summon_player, self._summon_groups, self.obstacle_sprites, self._summon_damage, self._summon_animation_player)
+					self._summons.append(frog)
+					if self.level:
+						self.level.total_monsters += 1
+					self.mana -= self._summon_cost * 0.8
+					self._frog_total_count += 1
+					active_frogs.append(frog)
+				if self._frog_total_count >= 4:
+					self._frog_waves_done = 2
 
 
 	def check_death(self):
@@ -729,6 +803,6 @@ class Enemy(Entity):
 		self.summon_update()
 		self.check_death()
 
-	def enemy_update(self, player):
-		self.get_status(player)
-		self.actions(player)
+	def enemy_update(self, targets):
+		self.get_status(targets)
+		self.actions(targets)

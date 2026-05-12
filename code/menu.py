@@ -167,15 +167,13 @@ class Leaderboard:
         data = self.get_data()
         data.append({'round': round_name, 'time': time_sec})
         
-        # Sort logic: Win > Round 4 > 3 > 2 > 1
+        # Sort: Win > Round 3 > 2 only (Round 1 not ranked)
         def sort_key(entry):
             r = entry['round']
             priority = 0
             if r == 'Win': priority = 5
-            elif 'Round 4' in r: priority = 4
-            elif 'Round 3' in r: priority = 3
-            elif 'Round 2' in r: priority = 2
-            elif 'Round 1' in r: priority = 1
+            elif 'Round 3' in r: priority = 4
+            elif 'Round 2' in r: priority = 3
             
             # Shorter time is better (negative so larger is better for reverse sort)
             return (priority, -entry['time'])

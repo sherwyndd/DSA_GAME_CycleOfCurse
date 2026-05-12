@@ -1,3 +1,16 @@
+"""
+Level Module
+------------
+Handles the orchestration of the game world, including map loading, sprite groups, 
+collision logic, and game state transitions.
+
+DSA Integration:
+- YSortCameraGroup: Uses a custom sorting algorithm (Y-Sort) to manage sprite 
+  layering based on vertical position, simulating 3D depth.
+- Attackable Sprites: Managed through pygame groups to optimize collision 
+  checks between the player, enemies, and summons.
+- Map Transitions: Logic for switching between layouts and resetting world state.
+"""
 import pygame 
 import random
 from settings import *
@@ -8,6 +21,7 @@ from weapon import Weapon
 from ui import UI
 from magic import MagicPlayer
 from particles import AnimationPlayer
+from support import remove_background_floodfill
 
 class Level:
 	def __init__(self):
@@ -51,7 +65,17 @@ class Level:
 
 		# user interface
 		self.ui = UI()
-		self.start_time = pygame.time.get_ticks()
+		now = pygame.time.get_ticks()
+		self.start_time = now
+		self.round_start_time = now  # HUD + leaderboard: time since current map/round began
+		self.intro_sequence = []
+		self.intro_started_at = 0
+		self.intro_active = False
+		self.intro_input_lock_until = 0
+
+		# Leaderboard: snapshot at death/win; flushed when player picks Play Again / Back to Menu
+		self.pending_leaderboard = None
+		self._leaderboard_save_pending = None
 
 		# magic 
 		self.magic_player = MagicPlayer(None)
@@ -59,12 +83,32 @@ class Level:
 		# particles
 		self.animation_player = AnimationPlayer()
 		
+		# skill tree / pause overlay
+		self.show_skill_tree = False
+		self.skill_tree_pause_start = 0
+		self.pause_offset = 0
+		self.skill_tree_category_index = 0
+		self.skill_tree_skill_index = 0
+		self.skill_tree_mode = 'category'
+		self.skill_tree_scroll = 0
+		
 		# Game over / Win
 		self.game_over_selection = 0
 		self.win_selection = 0
 		self.status = 'playing'
+		self.enemy_intro_text = {
+			'spirit': 'A floating curse that only deals basic damage.',
+			'slime': 'A jelly-like curse with basic contact damage.',
+			'skeleton': 'A fragile melee bone warrior.',
+			'skeleton-big': 'Heavy bruiser with stronger melee hits.',
+			'skeleton-shaman': 'A caster that fires flames from range.',
+			'boss': 'Close-range BOSS with axe strikes that can freeze you.',
+			'boss2': 'Summoner BOSS: frogs can slow, bull charges for heavy knockback.',
+			'boss3': 'Aggressive BOSS with triple-slash lance pressure.'
+		}
 
 		self.create_map()
+		self.enqueue_round_intro(show_starter_weapon = True)
 
 	def create_map(self):
 		map_data = MAPS[self.current_map]
@@ -159,46 +203,38 @@ class Level:
 			positions = random.sample(empty_tiles, spawn_count)
 			for i, pos in enumerate(positions):
 				if i < 5:
-					Enemy('slime', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, animation_player=self.animation_player, particle_groups=[self.visible_sprites])
+					Enemy('slime', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, animation_player=self.animation_player, particle_groups=[self.visible_sprites], level=self)
 				else:
-					Enemy('spirit', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, animation_player=self.animation_player, particle_groups=[self.visible_sprites])
-		elif empty_tiles and self.current_map == 'third':
+					Enemy('spirit', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, animation_player=self.animation_player, particle_groups=[self.visible_sprites], level=self)
+		elif empty_tiles and self.current_map == 'fourth':
 			spawn_count = min(9, len(empty_tiles))
 			self.total_monsters = spawn_count
 			positions = random.sample(empty_tiles, spawn_count)
 			for i, pos in enumerate(positions):
 				if i < 5:
-					Enemy('skeleton', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, animation_player=self.animation_player, particle_groups=[self.visible_sprites])
+					Enemy('skeleton', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, animation_player=self.animation_player, particle_groups=[self.visible_sprites], level=self)
 				elif i < 7:
-					Enemy('skeleton-big', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, animation_player=self.animation_player, particle_groups=[self.visible_sprites])
+					Enemy('skeleton-big', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, animation_player=self.animation_player, particle_groups=[self.visible_sprites], level=self)
 				else:
-					Enemy('skeleton-shaman', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, animation_player=self.animation_player, particle_groups=[self.visible_sprites])
-		elif empty_tiles and self.current_map == 'fourth':
-			# Sukuna's round - just the boss
-			self.total_monsters = 0
+					Enemy('skeleton-shaman', pos, [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, animation_player=self.animation_player, particle_groups=[self.visible_sprites], level=self)
 		else:
 			self.total_monsters = 0
 
 		# Spawn boss on first map
 		if self.current_map == 'first':
-			Enemy('boss', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, self.create_enemy_attack, self.destroy_enemy_attack, animation_player=self.animation_player, particle_groups=[self.visible_sprites])
+			Enemy('boss', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, self.create_enemy_attack, self.destroy_enemy_attack, animation_player=self.animation_player, particle_groups=[self.visible_sprites], level=self)
 			self.total_monsters += 1
 
 		# Spawn boss2 on second map
 		if self.current_map == 'second':
-			boss2 = Enemy('boss2', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, self.create_enemy_attack, self.destroy_enemy_attack, animation_player=self.animation_player, particle_groups=[self.visible_sprites])
+			boss2 = Enemy('boss2', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, self.create_enemy_attack, self.destroy_enemy_attack, animation_player=self.animation_player, particle_groups=[self.visible_sprites], level=self)
 			self.total_monsters += 1
 			# Still need to wire summon references for logic
 			self._pending_boss2 = boss2
 
-		# Spawn boss3 (Sukuna) on third map
-		if self.current_map == 'third':
-			Enemy('boss3', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, self.create_enemy_attack, self.destroy_enemy_attack, self.create_enemy_projectile, animation_player=self.animation_player, particle_groups=[self.visible_sprites])
-			self.total_monsters += 1
-
 		# Spawn boss3 (Sukuna) on fourth map
 		if self.current_map == 'fourth':
-			Enemy('boss3', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, self.create_enemy_attack, self.destroy_enemy_attack, self.create_enemy_projectile, animation_player=self.animation_player, particle_groups=[self.visible_sprites])
+			Enemy('boss3', (self.map_width // 2, self.map_height // 2), [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], self.obstacle_sprites, self.damage_player, self.trigger_death_particles, self.create_enemy_attack, self.destroy_enemy_attack, self.create_enemy_projectile, animation_player=self.animation_player, particle_groups=[self.visible_sprites], level=self)
 			self.total_monsters += 1
 
 		if self.total_monsters > 0:
@@ -216,9 +252,11 @@ class Level:
 		
 		self.current_map = new_map
 		self.create_map()
+		self.round_start_time = pygame.time.get_ticks()
+		self.enqueue_round_intro(show_starter_weapon = False)
 		self.player.health = self.player.stats['health']
 		self.player.target_health = self.player.health
-		self.player.potions_left = 5
+		self.player.potions_left = self.player.max_potions
 		
 		if spawn_pos:
 			self.player.hitbox.center = spawn_pos
@@ -245,18 +283,11 @@ class Level:
 				self.switch_map('first', spawn_pos = (self.map_width - 80, self.player.hitbox.centery))
 			# Map 2 -> Map 3 (Right)
 			elif self.player.hitbox.centerx > self.map_width - 40:
-				self.switch_map('third', spawn_pos = (80, self.player.hitbox.centery))
-		elif self.current_map == 'third':
+				self.switch_map('fourth', spawn_pos = (80, self.player.hitbox.centery))
+		elif self.current_map == 'fourth':
 			# Map 3 -> Map 2 (Left)
 			if self.player.hitbox.centerx < 40:
 				self.switch_map('second', spawn_pos = (self.map_width - 80, self.player.hitbox.centery))
-			# Map 3 -> Map 4 (Right)
-			elif self.player.hitbox.centerx > self.map_width - 40:
-				self.switch_map('fourth', spawn_pos = (80, self.player.hitbox.centery))
-		elif self.current_map == 'fourth':
-			# Map 4 -> Map 3 (Left)
-			if self.player.hitbox.centerx < 40:
-				self.switch_map('third', spawn_pos = (self.map_width - 80, self.player.hitbox.centery))
 
 	def create_attack(self):
 		self.current_attack = Weapon(self.player,[self.visible_sprites, self.attack_sprites])
@@ -297,7 +328,14 @@ class Level:
 				collision_sprites = pygame.sprite.spritecollide(attack_sprite,self.attackable_sprites,False)
 				if collision_sprites:
 					for target_sprite in collision_sprites:
+						if getattr(target_sprite, 'sprite_type', '') == 'player_summon':
+							continue
 						target_sprite.get_damage(self.player,attack_sprite.sprite_type)
+						if hasattr(target_sprite, 'health') and target_sprite.health <= 0 and not getattr(target_sprite, 'exp_awarded', False):
+							exp_gain = getattr(target_sprite, 'exp_reward', 0)
+							if exp_gain:
+								self.player.exp += exp_gain
+							target_sprite.exp_awarded = True
 
 	def enemy_attack_logic(self):
 		if self.enemy_attack_sprites:
@@ -313,9 +351,72 @@ class Level:
 						# If it's a magic projectile, kill it on hit
 						if getattr(attack_sprite, 'sprite_type', '') == 'magic':
 							attack_sprite.kill()
-					# If it doesn't have an owner but has its own damage (optional future-proofing)
+					# If it doesn't have an owner but has its own damage
 					elif hasattr(attack_sprite, 'damage'):
 						self.damage_player(attack_sprite.damage, 'weapon')
+				
+				else:
+					# Also check collision with player summons
+					for summon in self.visible_sprites:
+						if getattr(summon, 'sprite_type', '') == 'player_summon':
+							if collision_rect.colliderect(summon.hitbox):
+								if hasattr(attack_sprite, 'owner') and attack_sprite.owner:
+									if hasattr(summon, 'get_damage'):
+										summon.get_damage(self.player, 'enemy') # Pass player as dummy attacker
+									if getattr(attack_sprite, 'sprite_type', '') == 'magic':
+										attack_sprite.kill()
+
+	def handle_skill_tree_input(self, events):
+		categories = self.player.skill_tree_categories
+		current_category = categories[self.skill_tree_category_index]
+		
+		# Filter nodes: 
+		# 1. Weapon check
+		# 2. Prerequisites check (hide LV2 until LV1 is unlocked)
+		skills = [
+			n for n in current_category['nodes'] 
+			if (n.get('weapon') is None or n.get('weapon') in self.player.unlocked_weapons) and
+			   (all(self.player.is_skill_unlocked(p) for p in n['prereq']))
+		]
+		
+		for event in events:
+			if event.type == pygame.KEYDOWN:
+				if self.skill_tree_mode == 'category':
+					if event.key in (pygame.K_RIGHT, pygame.K_d):
+						self.skill_tree_category_index = min(self.skill_tree_category_index + 1, len(categories) - 1)
+						self.skill_tree_scroll = 0
+					elif event.key in (pygame.K_LEFT, pygame.K_a):
+						self.skill_tree_category_index = max(self.skill_tree_category_index - 1, 0)
+						self.skill_tree_scroll = 0
+					elif event.key in (pygame.K_DOWN, pygame.K_s, pygame.K_RETURN, pygame.K_SPACE):
+						if skills:
+							self.skill_tree_mode = 'skill'
+							self.skill_tree_skill_index = 0
+							self.skill_tree_scroll = 0
+				
+				elif self.skill_tree_mode == 'skill':
+					cols = 2
+					if event.key in (pygame.K_RIGHT, pygame.K_d):
+						self.skill_tree_skill_index = min(self.skill_tree_skill_index + 1, len(skills) - 1)
+					elif event.key in (pygame.K_LEFT, pygame.K_a):
+						self.skill_tree_skill_index = max(self.skill_tree_skill_index - 1, 0)
+					elif event.key in (pygame.K_DOWN, pygame.K_s):
+						max_row = (len(skills) - 1) // cols
+						current_row = self.skill_tree_skill_index // cols
+						if current_row == max_row:
+							self.skill_tree_mode = 'category'
+						else:
+							self.skill_tree_skill_index = min(self.skill_tree_skill_index + cols, len(skills) - 1)
+					elif event.key in (pygame.K_UP, pygame.K_w):
+						current_row = self.skill_tree_skill_index // cols
+						if current_row == 0:
+							self.skill_tree_mode = 'category'
+						else:
+							self.skill_tree_skill_index = max(self.skill_tree_skill_index - cols, 0)
+					elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
+						if skills:
+							node = skills[self.skill_tree_skill_index]
+							self.player.unlock_skill(node['id'])
 
 	def damage_player(self,amount,attack_type):
 		if self.player.vulnerable:
@@ -417,7 +518,7 @@ class Level:
 				self.reward_weapon = 'axe'
 			elif self.current_map == 'second':
 				self.reward_weapon = 'sai'
-			elif self.current_map == 'third':
+			elif self.current_map == 'fourth':
 				self.reward_weapon = 'lance'
 			else:
 				self.reward_weapon = None
@@ -454,10 +555,198 @@ class Level:
 			else:
 				self.reward_display_time = 0
 
+	def round_elapsed_seconds(self):
+		return (pygame.time.get_ticks() - self.round_start_time) // 1000
+
+	def total_elapsed_seconds(self):
+		current_time = pygame.time.get_ticks()
+		elapsed = current_time - self.start_time - self.pause_offset
+		if self.show_skill_tree and self.skill_tree_pause_start:
+			elapsed -= current_time - self.skill_tree_pause_start
+		return max(0, elapsed) // 1000
+
+	def _build_round_enemy_entries(self):
+		counts = {}
+		preview_images = {}
+		for sprite in self.attackable_sprites:
+			name = getattr(sprite, 'monster_name', None)
+			if not name:
+				continue
+			counts[name] = counts.get(name, 0) + 1
+			if name not in preview_images:
+				preview_images[name] = sprite.image.copy()
+
+		# Round 2 special briefing: Megumi + planned summons
+		if self.current_map == 'second':
+			def load_intro_image(path, scale):
+				try:
+					surf = pygame.image.load(path).convert_alpha()
+					surf = remove_background_floodfill(surf, threshold = 40)
+					return pygame.transform.scale_by(surf, scale)
+				except:
+					return None
+
+			return [
+				{
+					'name': 'MEGUMI',
+					'count': 1,
+					'damage': int(monster_data['boss2']['damage']),
+					'is_boss': True,
+					'intro': 'Summoner BOSS controlling all shikigami on this map.',
+					'image': preview_images.get('boss2') or load_intro_image('../graphics/megumi.png', 0.32)
+				},
+				{
+					'name': 'DIVINE DOG (BLACK)',
+					'count': 1,
+					'damage': 8,
+					'is_boss': False,
+					'intro': 'Fast melee summons that pressure you at close range.',
+					'image': load_intro_image('../graphics/summons/divine-dog-black.png', 0.13)
+				},
+				{
+					'name': 'DIVINE DOG (WHITE)',
+					'count': 1,
+					'damage': 8,
+					'is_boss': False,
+					'intro': 'Fast melee summons that pressure you at close range.',
+					'image': load_intro_image('../graphics/summons/divine-dog-white.png', 0.13)
+				},
+				{
+					'name': 'FROG',
+					'count': 4,
+					'damage': 2,
+					'is_boss': False,
+					'intro': 'Special: attacks apply slow and make movement harder.',
+					'image': load_intro_image('../graphics/summons/frog.png', 0.3)
+				},
+				{
+					'name': 'BULL',
+					'count': 1,
+					'damage': 15,
+					'is_boss': False,
+					'intro': 'Special: heavy charge attack with strong knockback.',
+					'image': load_intro_image('../graphics/summons/bull.png', 0.3)
+				},
+				{
+					'name': 'TOTALITY DOG',
+					'count': 1,
+					'damage': 18,
+					'is_boss': False,
+					'intro': 'Evolved dog form with higher damage and sustain pressure.',
+					'image': load_intro_image('../graphics/summons/totality-dog.png', 0.0975)
+				}
+			]
+
+		entries = []
+		for name, count in sorted(counts.items(), key = lambda kv: kv[0]):
+			damage = int(monster_data.get(name, {}).get('damage', 0))
+			entries.append({
+				'name': name.upper().replace('-', ' '),
+				'count': count,
+				'damage': damage,
+				'is_boss': name.startswith('boss'),
+				'intro': self.enemy_intro_text.get(name, 'Hostile curse with basic attacks.'),
+				'image': preview_images.get(name)
+			})
+		return entries
+
+	def enqueue_round_intro(self, show_starter_weapon = False):
+		self.intro_sequence = []
+		if show_starter_weapon:
+			magic_key = self.ui.get_key_label('MAGIC') if hasattr(self, 'ui') else pygame.key.name(CONTROLS['MAGIC']).upper()
+			self.intro_sequence.append({
+				'type': 'weapon',
+				'weapon': 'sword',
+				'title': 'STARTER WEAPON',
+				'extra_lines': [
+					f'Potion: press {magic_key} to heal.',
+					'You start each run with 5 potions.'
+				]
+			})
+		entries = self._build_round_enemy_entries()
+		if entries:
+			self.intro_sequence.append({
+				'type': 'enemy_intro',
+				'round': MAPS[self.current_map]['index'],
+				'entries': entries
+			})
+		self.intro_active = len(self.intro_sequence) > 0
+		now = pygame.time.get_ticks()
+		self.intro_started_at = now
+		# Prevent menu confirm key from instantly skipping first intro card
+		self.intro_input_lock_until = now + 250
+
+	def handle_intro_sequence(self, events):
+		if not self.intro_active or not self.intro_sequence:
+			self.intro_active = False
+			return False
+
+		now = pygame.time.get_ticks()
+		if now < self.intro_input_lock_until:
+			item = self.intro_sequence[0]
+			if item['type'] == 'weapon':
+				self.ui.show_reward(
+					item['weapon'],
+					title = item['title'],
+					header = 'LOADOUT READY',
+					extra_lines = item.get('extra_lines')
+				)
+			elif item['type'] == 'enemy_intro':
+				self.ui.show_round_enemy_intro(item['round'], item['entries'])
+			return True
+
+		for event in events:
+			if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+				self.intro_sequence.pop(0)
+				self.intro_started_at = now
+				break
+
+		if not self.intro_sequence:
+			self.intro_active = False
+			return False
+
+		item = self.intro_sequence[0]
+		if item['type'] == 'weapon':
+			self.ui.show_reward(
+				item['weapon'],
+				title = item['title'],
+				header = 'LOADOUT READY',
+				extra_lines = item.get('extra_lines')
+			)
+		elif item['type'] == 'enemy_intro':
+			self.ui.show_round_enemy_intro(item['round'], item['entries'])
+		return True
+
+	def _capture_leaderboard_on_death(self):
+		"""Only rounds 2–4 count for leaderboard on death; time = since this round started."""
+		idx = MAPS[self.current_map]['index']
+		if idx < 2:
+			self.pending_leaderboard = None
+			return
+		self.pending_leaderboard = {
+			'round': f'Round {idx}',
+			'time': self.round_elapsed_seconds()
+		}
+
+	def _capture_leaderboard_on_win(self):
+		self.pending_leaderboard = {'round': 'Win', 'time': self.round_elapsed_seconds()}
+
+	def _queue_leaderboard_save_from_pending(self):
+		self._leaderboard_save_pending = self.pending_leaderboard
+		self.pending_leaderboard = None
+
+	def consume_leaderboard_save(self):
+		"""Called by Game after run(); returns dict or None."""
+		d = self._leaderboard_save_pending
+		self._leaderboard_save_pending = None
+		return d
+
 	def restart_game(self):
+		self._queue_leaderboard_save_from_pending()
+		self.start_time = pygame.time.get_ticks()
 		self.player.health = self.player.stats['health']
 		self.player.target_health = self.player.health
-		self.player.potions_left = 5
+		self.player.potions_left = self.player.max_potions
 		self.player.unlocked_weapons = ['sword']
 		self.player.weapon_index = 0
 		self.player.weapon = self.player.unlocked_weapons[self.player.weapon_index]
@@ -467,6 +756,7 @@ class Level:
 		self.win_selection = 0
 		self.status = 'playing'
 		self.switch_map('first')
+		self.enqueue_round_intro(show_starter_weapon = True)
 
 	def game_over_logic(self, events):
 		self.ui.show_game_over(self.game_over_selection)
@@ -481,6 +771,7 @@ class Level:
 					if self.game_over_selection == 0:
 						self.restart_game()
 					elif self.game_over_selection == 1:
+						self._queue_leaderboard_save_from_pending()
 						self.status = 'back_to_menu'
 
 	def win_logic(self, events):
@@ -496,15 +787,45 @@ class Level:
 					if self.win_selection == 0:
 						self.restart_game()
 					elif self.win_selection == 1:
+						self._queue_leaderboard_save_from_pending()
 						self.status = 'back_to_menu'
 
 	def run(self, events=None):
 		if events is None: events = []
+
+		for event in events:
+			if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+				if self.show_skill_tree:
+					self.show_skill_tree = False
+					if self.skill_tree_pause_start:
+						self.pause_offset += pygame.time.get_ticks() - self.skill_tree_pause_start
+						self.skill_tree_pause_start = 0
+				elif self.status == 'playing' and not self.intro_active:
+					self.show_skill_tree = True
+					self.skill_tree_pause_start = pygame.time.get_ticks()
+					self.skill_tree_mode = 'category'
+					self.skill_tree_category_index = 0
+					self.skill_tree_skill_index = 0
+
+		# Intro cards are paused overlays: keep map background visible, wait for SPACE.
+		if self.intro_active and self.intro_sequence:
+			self.current_monsters = len(self.attackable_sprites)
+			self.visible_sprites.custom_draw(self.player)
+			self.ui.display(
+				self.player,
+				MAPS[self.current_map]['index'],
+				self.current_monsters,
+				self.total_monsters,
+				self.total_elapsed_seconds()
+			)
+			self.handle_intro_sequence(events)
+			return
 		
 		# Check for win condition
 		if self.current_map == 'fourth' and self.current_monsters <= 0 and self.reward_given:
 			if self.status != 'win':
 				self.status = 'win'
+				self._capture_leaderboard_on_win()
 			self.visible_sprites.custom_draw(self.player)
 			self.win_logic(events)
 			return
@@ -512,12 +833,34 @@ class Level:
 		if hasattr(self, 'player') and self.player.health <= 0:
 			if self.status != 'game_over':
 				self.status = 'game_over'
+				self._capture_leaderboard_on_death()
+				self._game_over_hud_seconds = self.total_elapsed_seconds()
 			self.visible_sprites.custom_draw(self.player)
-			self.ui.display(self.player, MAPS[self.current_map]['index'], self.current_monsters, self.total_monsters, (pygame.time.get_ticks() - self.start_time) // 1000)
+			self.ui.display(self.player, MAPS[self.current_map]['index'], self.current_monsters, self.total_monsters, self._game_over_hud_seconds)
 			self.game_over_logic(events)
 			return
 		
 		self.status = 'playing'
+
+		if self.show_skill_tree:
+			self.handle_skill_tree_input(events)
+			self.current_monsters = len(self.attackable_sprites)
+			self.visible_sprites.custom_draw(self.player)
+			self.ui.display(
+				self.player,
+				MAPS[self.current_map]['index'],
+				self.current_monsters,
+				self.total_monsters,
+				self.total_elapsed_seconds()
+			)
+			self.ui.draw_skill_tree(
+				self.player,
+				self.skill_tree_category_index,
+				self.skill_tree_skill_index,
+				self.skill_tree_mode,
+				self
+			)
+			return
 
 		# Wire boss2 summon references once player is ready
 		if hasattr(self, '_pending_boss2') and self._pending_boss2 and hasattr(self, 'player'):
@@ -536,6 +879,34 @@ class Level:
 				telegraph['callback'](*telegraph['args'])
 				self.telegraphs.remove(telegraph)
 
+		# Sai Weapon Mechanic: Summon/Despawn dogs
+		if self.player.weapon == 'sai' and self.player.last_weapon != 'sai':
+			# Switch TO Sai: Summon dogs
+			from summon import DivineDog
+			for variant, data in self.player.sai_dogs_data.items():
+				if data['alive']:
+					dog = DivineDog(
+						variant = variant,
+						owner = self.player,
+						player = self.player,
+						groups = [self.visible_sprites, self.attackable_sprites], # So they can be hit by enemies
+						obstacle_sprites = self.obstacle_sprites,
+						damage_player = self.damage_player,
+						animation_player = self.animation_player,
+						is_player_owned = True,
+						attackable_sprites = self.attackable_sprites
+					)
+					dog.health = data['health']
+					self.player.sai_dogs_active.append(dog)
+		elif self.player.weapon != 'sai' and self.player.last_weapon == 'sai':
+			# Switch AWAY from Sai: Despawn dogs
+			for dog in self.player.sai_dogs_active:
+				if dog.alive():
+					dog.begin_despawn()
+			self.player.sai_dogs_active = []
+		
+		self.player.last_weapon = self.player.weapon
+
 		self.visible_sprites.custom_draw(self.player)
 		self.visible_sprites.update()
 		self.visible_sprites.enemy_update(self.player)
@@ -543,9 +914,12 @@ class Level:
 		self.enemy_attack_logic()
 		self.update_gate_state()
 		self.check_map_transition()
-		elapsed_time = (pygame.time.get_ticks() - self.start_time) // 1000
+		elapsed_time = self.total_elapsed_seconds()
 		self.ui.display(self.player, MAPS[self.current_map]['index'], self.current_monsters, self.total_monsters, elapsed_time)
 		self.display_reward_logic(events)
+
+		if self.handle_intro_sequence(events):
+			return
 
 
 class YSortCameraGroup(pygame.sprite.Group):
@@ -604,5 +978,6 @@ class YSortCameraGroup(pygame.sprite.Group):
 
 	def enemy_update(self,player):
 		enemy_sprites = [sprite for sprite in self.sprites() if hasattr(sprite,'sprite_type') and sprite.sprite_type == 'enemy']
+		targets = [player] + [s for s in self if getattr(s, 'sprite_type', '') == 'player_summon']
 		for enemy in enemy_sprites:
-			enemy.enemy_update(player)
+			enemy.enemy_update(targets)

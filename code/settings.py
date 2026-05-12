@@ -111,16 +111,19 @@ WORLD_MAP_3 = [
 
 # enemy
 monster_data = {
-	'spirit': {'health': 100,'damage':8,'attack_type': 'none', 'speed': 2, 'resistance': 3, 'attack_radius': 60, 'notice_radius': 350},
-	'slime': {'health': 100,'damage':8,'attack_type': 'none', 'speed': 2, 'resistance': 3, 'attack_radius': 60, 'notice_radius': 350},
-	'skeleton': {'health': 120,'damage':10,'attack_type': 'slash', 'speed': 2, 'resistance': 2, 'attack_radius': 80, 'notice_radius': 350},
-	'skeleton-big': {'health': 250,'damage':15,'attack_type': 'claw', 'speed': 1.5, 'resistance': 3, 'attack_radius': 110, 'notice_radius': 350},
-	'skeleton-shaman': {'health': 100,'damage':12,'attack_type': 'flame', 'speed': 0.5, 'resistance': 1, 'attack_radius': 250, 'notice_radius': 350},
-	'boss': {'health': 500,'damage':25,'attack_type': 'axe', 'speed': 1.5, 'resistance': 0.1, 'attack_radius': 70, 'notice_radius': 400},
-	'boss2': {'health': 600,'damage':10,'attack_type': 'sai', 'speed': 2.4, 'resistance': 0.1, 'attack_radius': 70, 'notice_radius': 400},
-	'boss3': {'health': 700,'damage':30,'attack_type': 'lance', 'speed': 2.2, 'resistance': 0.1, 'attack_radius': 80, 'notice_radius': 400},
-	'bull': {'health': 150,'damage':20,'attack_type': 'bull', 'speed': 2.5, 'resistance': 0, 'attack_radius': 200, 'notice_radius': 400},
-	'frog': {'health': 60,'damage':2,'attack_type': 'frog', 'speed': 1.0, 'resistance': 2, 'attack_radius': 80, 'notice_radius': 400}
+	'spirit': {'health': 100,'damage':8,'exp':15,'attack_type': 'none', 'speed': 2, 'resistance': 3, 'attack_radius': 60, 'notice_radius': 350},
+	'slime': {'health': 100,'damage':8,'exp':15,'attack_type': 'none', 'speed': 2, 'resistance': 3, 'attack_radius': 60, 'notice_radius': 350},
+	'skeleton': {'health': 120,'damage':10,'exp':18,'attack_type': 'slash', 'speed': 2, 'resistance': 2, 'attack_radius': 80, 'notice_radius': 350},
+	'skeleton-big': {'health': 250,'damage':15,'exp':38,'attack_type': 'claw', 'speed': 1.5, 'resistance': 3, 'attack_radius': 110, 'notice_radius': 350},
+	'skeleton-shaman': {'health': 100,'damage':12,'exp':30,'attack_type': 'flame', 'speed': 0.5, 'resistance': 1, 'attack_radius': 250, 'notice_radius': 350},
+	'boss': {'health': 500,'damage':25,'exp':75,'attack_type': 'axe', 'speed': 1.5, 'resistance': 0.1, 'attack_radius': 70, 'notice_radius': 400},
+	'boss2': {'health': 600,'damage':10,'exp':90,'attack_type': 'sai', 'speed': 2.4, 'resistance': 0.1, 'attack_radius': 70, 'notice_radius': 400},
+	'boss3': {'health': 700,'damage':30,'exp':120,'attack_type': 'lance', 'speed': 2.2, 'resistance': 0.1, 'attack_radius': 80, 'notice_radius': 400},
+	'bull': {'health': 150,'damage':20,'exp':38,'attack_type': 'bull', 'speed': 2.5, 'resistance': 0, 'attack_radius': 200, 'notice_radius': 400},
+	'frog': {'health': 60,'damage':2,'exp':12,'attack_type': 'frog', 'speed': 1.0, 'resistance': 2, 'attack_radius': 80, 'notice_radius': 400},
+	'divine_dog_black': {'health': 100,'damage':8,'exp':15,'attack_type': 'none', 'speed': 3.1, 'resistance': 0, 'attack_radius': 80, 'notice_radius': 400},
+	'divine_dog_white': {'health': 100,'damage':8,'exp':15,'attack_type': 'none', 'speed': 3.1, 'resistance': 0, 'attack_radius': 80, 'notice_radius': 400},
+	'totality': {'health': 220,'damage':18,'exp':45,'attack_type': 'none', 'speed': 3.5, 'resistance': 0, 'attack_radius': 100, 'notice_radius': 400}
 }
 
 
@@ -153,16 +156,8 @@ MAPS = {
         'height': 711,
         'gates': [(7, 0), (8, 0), (9, 0), (7, 23), (8, 23), (9, 23)]
     },
-    'third': {
-        'index': 3,
-        'layout': WORLD_MAP_2,
-        'bg': '../graphics/background4.png',
-        'width': 1224,
-        'height': 711,
-        'gates': [(7, 0), (8, 0), (9, 0), (7, 23), (8, 23), (9, 23)]
-    },
     'fourth': {
-        'index': 4,
+        'index': 3,
         'layout': WORLD_MAP_3,
         'bg': '../graphics/mahoraga-background.jpg',
         'width': 1224,

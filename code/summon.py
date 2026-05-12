@@ -1,3 +1,15 @@
+"""
+Summon Module
+-------------
+Defines shikigami (summons) used by both the Player and Boss Megumi.
+
+DSA Highlights:
+- Separation Algorithm: A proximity-based push algorithm to prevent 
+  multiple summons from overlapping (stacking).
+- BFS Pathfinding: Inherited from DivineDog to allow summons to 
+  navigate complex map layouts avoiding obstacles.
+- State-Based AI: Manages complex life cycles (Spawn -> Orbit -> Chase -> Despawn).
+"""
 import pygame
 import math
 from entity import Entity
@@ -8,17 +20,22 @@ class DivineDog(Entity):
     SPAWN_DURATION  = 600   # ms - time for spawn reveal animation
     DESPAWN_DURATION = 500  # ms - time for despawn hide animation
 
-    def __init__(self, variant, owner, player, groups, obstacle_sprites, damage_player, animation_player):
+    def __init__(self, variant, owner, player, groups, obstacle_sprites, damage_player, animation_player, is_player_owned = False, attackable_sprites = None):
         super().__init__(groups)
         self.animation_player = animation_player
         self.visible_sprites = groups[0] if isinstance(groups, list) else groups
-        self.sprite_type  = 'enemy'
+        self.sprite_type  = 'enemy' if not is_player_owned else 'player_summon'
         self.variant      = variant  # 'black' or 'white'
-        self.owner        = owner    # Megumi boss
+        self.owner        = owner    # Megumi boss OR Player
         self.player       = player
         self.damage_player = damage_player
         self.obstacle_sprites = obstacle_sprites
-        self.monster_name = f'divine_dog_{variant}'
+        self.is_player_owned = is_player_owned
+        self.attackable_sprites = attackable_sprites
+        if variant in ('black', 'white'):
+            self.monster_name = f'divine_dog_{variant}'
+        else:
+            self.monster_name = variant
 
         # ── Graphics ─────────────────────────────────────────────────────────
         if variant == 'totality':
@@ -47,16 +64,13 @@ class DivineDog(Entity):
         self.rect  = self.image.get_rect()
 
         # ── Stats ─────────────────────────────────────────────────────────────
-        if variant == 'totality':
-            self.max_health = 220
-            self.speed      = 3.5
-            self.attack_damage = 18
-            self.attack_radius = 100
-        else:
-            self.max_health = 100
-            self.speed      = 3.1
-            self.attack_damage = 8
-            self.attack_radius = 80
+        from settings import monster_data
+        self.monster_info = monster_data.get(self.monster_name, {'health': 100, 'damage': 8, 'exp': 15})
+        self.max_health = self.monster_info.get('health', 100)
+        self.speed      = self.monster_info.get('speed', 3.1)
+        self.attack_damage = self.monster_info.get('damage', 8)
+        self.attack_radius = self.monster_info.get('attack_radius', 80)
+        self.exp_reward = self.monster_info.get('exp', 0) if not is_player_owned else 0
 
         self.health     = self.max_health
         self.attack_cooldown = 700   # ms
@@ -279,16 +293,33 @@ class DivineDog(Entity):
         return (target_vec - enemy_vec).normalize() if (target_vec - enemy_vec).magnitude() > 0 else pygame.math.Vector2()
 
     # ── AI Helpers ───────────────────────────────────────────────────────────
-    def _chase_player(self):
-        target_pos = self.player.rect.center
+    def _get_target_pos(self):
+        if not self.is_player_owned:
+            return self.player.rect.center
+        
+        # Player-owned dogs target nearest enemy
+        nearest_enemy = None
+        min_dist = 9999
+        for sprite in self.attackable_sprites:
+            if sprite != self and sprite != self.owner and hasattr(sprite, 'health') and sprite.health > 0:
+                dist = math.hypot(sprite.rect.centerx - self.hitbox.centerx, sprite.rect.centery - self.hitbox.centery)
+                if dist < min_dist:
+                    min_dist = dist
+                    nearest_enemy = sprite
+        
+        if nearest_enemy:
+            return nearest_enemy.rect.center
+        return self.player.rect.center # Orbit player if no enemies
+
+    def _chase_target(self):
+        target_pos = self._get_target_pos()
         
         # Steering leashing: Adjust target if too far from owner
         dist_to_owner = math.hypot(target_pos[0] - self.owner.rect.centerx,
                                  target_pos[1] - self.owner.rect.centery)
-        max_leash = self.orbit_radius + 40
+        max_leash = self.orbit_radius + (400 if self.is_player_owned else 40) # Larger leash for player dogs
         
         if dist_to_owner > max_leash:
-            # Player is outside leash, dog targets the boundary point
             owner_vec = pygame.math.Vector2(self.owner.rect.center)
             target_vec = pygame.math.Vector2(target_pos)
             target_pos = owner_vec + (target_vec - owner_vec).normalize() * max_leash
@@ -303,13 +334,14 @@ class DivineDog(Entity):
         tx = self.owner.rect.centerx + math.cos(self.orbit_angle) * self.orbit_radius
         ty = self.owner.rect.centery + math.sin(self.orbit_angle) * self.orbit_radius
         
-        # 2. Check if player is within Megumi's notice zone
-        player_dist = math.hypot(self.player.rect.centerx - self.owner.rect.centerx,
-                                self.player.rect.centery - self.owner.rect.centery)
+        # 2. Check if target is within notice zone
+        target_pos = self._get_target_pos()
+        dist_to_target = math.hypot(target_pos[0] - self.owner.rect.centerx,
+                                   target_pos[1] - self.owner.rect.centery)
         
-        # Priority: Attack player if in Megumi's area
-        if player_dist < self.owner.notice_radius:
-            target_pos = self.player.rect.center
+        notice_radius = 400 if self.is_player_owned else self.owner.notice_radius
+
+        if dist_to_target < notice_radius:
             speed = self.speed
         else:
             target_pos = (tx, ty)
@@ -321,19 +353,36 @@ class DivineDog(Entity):
 
     def _try_attack(self):
         now = pygame.time.get_ticks()
-        player_vec = pygame.math.Vector2(self.player.rect.center)
+        target_pos = self._get_target_pos()
         dog_vec = pygame.math.Vector2(self.hitbox.center)
-        dist = (player_vec - dog_vec).magnitude()
+        dist = math.hypot(target_pos[0] - dog_vec.x, target_pos[1] - dog_vec.y)
         
         if dist < self.attack_radius and now - self.last_attack_time > self.attack_cooldown:
             self.last_attack_time = now
             self.attack_feedback_time = now
-            self.damage_player(self.attack_damage, 'none')
             
-            # Spawn slash particle on player
+            if self.is_player_owned:
+                # Damage enemies in radius
+                for sprite in self.attackable_sprites:
+                    if sprite != self and sprite != self.owner and hasattr(sprite, 'health'):
+                        # 1. Don't attack fellow friendly summons (dogs/frogs/etc)
+                        if getattr(sprite, 'sprite_type', '') == 'player_summon':
+                            continue
+                        
+                        # 2. Don't attack the player (owner)
+                        if sprite == self.player or sprite == self.owner:
+                            continue
+                            
+                        s_dist = math.hypot(sprite.rect.centerx - self.hitbox.centerx, sprite.rect.centery - self.hitbox.centery)
+                        if s_dist < self.attack_radius:
+                            if hasattr(sprite, 'get_damage'):
+                                sprite.get_damage(self.player, 'weapon')
+            else:
+                self.damage_player(self.attack_damage, 'none')
+            
+            # Spawn slash particle on target
             if self.animation_player:
-                self.animation_player.create_particles('slash', self.player.rect.center, [self.visible_sprites])
-            pass
+                self.animation_player.create_particles('slash', target_pos, [self.visible_sprites])
 
     # ── Reveal/Hide Pixel Animation ─────────────────────────────────────────
     def _init_pixel_anim(self):
@@ -399,6 +448,8 @@ class DivineDog(Entity):
             self.direction = pygame.math.Vector2() 
             if self.health <= 0:
                 self.begin_despawn()
+                if self.is_player_owned:
+                    self.player.sai_dogs_data[self.variant]['alive'] = False
             
             # Axe freeze effect
             if player.weapon == 'axe':
@@ -409,7 +460,7 @@ class DivineDog(Entity):
                         frozen_pos = (self.rect.midbottom[0], self.rect.midbottom[1] + 20)
                         self.animation_player.create_particles('frozen', frozen_pos, [self.visible_sprites], pos_type='midbottom')
 
-            if hasattr(self.owner, 'summon_aggro'):
+            if not self.is_player_owned and hasattr(self.owner, 'summon_aggro'):
                 self.owner.summon_aggro()
 
     def freeze(self):
@@ -459,18 +510,30 @@ class DivineDog(Entity):
         if self.state == 'orbiting' and not self.frozen:
             self._orbit_owner(dt)
             self._try_attack() 
-            if getattr(self.owner, 'attacking', False) or getattr(self.owner, '_summon_aggro_flag', False):
+            # Megumi dogs chase if owner attacks or is aggroed. Player dogs chase if an enemy is found.
+            should_chase = False
+            if self.is_player_owned:
+                if self._get_target_pos() != self.player.rect.center:
+                    should_chase = True
+            else:
+                if getattr(self.owner, 'attacking', False) or getattr(self.owner, '_summon_aggro_flag', False):
+                    should_chase = True
+            
+            if should_chase:
                 self.state = 'chasing'
                 self.state_timer = now
 
         elif self.state == 'chasing' and not self.frozen:
-            self._chase_player()
+            self._chase_target()
             self._try_attack()
             
-            # Stop chasing if player leaves Megumi's notice radius
-            player_dist = math.hypot(self.player.rect.centerx - self.owner.rect.centerx,
-                                    self.player.rect.centery - self.owner.rect.centery)
-            if player_dist > self.owner.notice_radius + 50: # small buffer
+            # Stop chasing if target is too far or lost
+            target_pos = self._get_target_pos()
+            owner_vec = pygame.math.Vector2(self.owner.rect.center)
+            dist_to_owner = math.hypot(target_pos[0] - owner_vec.x, target_pos[1] - owner_vec.y)
+            
+            notice_radius = 450 if self.is_player_owned else self.owner.notice_radius
+            if dist_to_owner > notice_radius + 50:
                 self.state = 'orbiting'
                 self.state_timer = now
 
@@ -479,6 +542,24 @@ class DivineDog(Entity):
 
         if self.state not in ('spawning', 'despawning'):
             self.animate()
+            
+            # ── Separation Logic: Push away from other summons/enemies to avoid overlapping ──
+            push_vec = pygame.math.Vector2()
+            for sprite in self.visible_sprites:
+                if sprite != self and hasattr(sprite, 'hitbox'):
+                    # Only push against other summons or enemies
+                    if getattr(sprite, 'sprite_type', '') in ('player_summon', 'enemy'):
+                        dist_vec = pygame.math.Vector2(self.hitbox.center) - pygame.math.Vector2(sprite.hitbox.center)
+                        dist = dist_vec.magnitude()
+                        # If overlapping or too close
+                        if 0 < dist < 32:
+                            push_vec += dist_vec.normalize() * (32 - dist) * 0.1
+            
+            if push_vec.magnitude() > 0:
+                self.hitbox.x += push_vec.x
+                self.collision('horizontal')
+                self.hitbox.y += push_vec.y
+                self.collision('vertical')
 
         # Update rect from hitbox
         self.rect.center = self.hitbox.center
@@ -489,6 +570,9 @@ class DivineDog(Entity):
 
         # Healing logic: Heal owner 1 HP per second if alive and not anti-healed
         if self.state in ('orbiting', 'chasing') and self.owner.alive():
+            if self.is_player_owned:
+                self.player.sai_dogs_data[self.variant]['health'] = self.health
+
             if not hasattr(self, '_last_heal_tick'): self._last_heal_tick = now
             if now - self._last_heal_tick >= 1000:
                 self._last_heal_tick = now
@@ -496,7 +580,10 @@ class DivineDog(Entity):
                 is_anti_healed = now - getattr(self.owner, 'anti_heal_time', 0) < getattr(self.owner, 'anti_heal_duration', 3000)
                 if not is_anti_healed:
                     heal_amount = 2 if self.variant == 'totality' else 1
-                    self.owner.health = min(self.owner.max_health, self.owner.health + heal_amount)
+                    max_hp = self.owner.max_health # Player now has max_health attribute
+                    self.owner.health = min(max_hp, self.owner.health + heal_amount)
+                    if self.is_player_owned:
+                        self.player.target_health = self.player.health
 
 class Frog(DivineDog):
     SPAWN_DURATION = 1000 # Slower spawn effect (1 second)

@@ -1,3 +1,14 @@
+"""
+Player Module
+-------------
+Defines the Player class, handling movement, combat, and progression.
+
+DSA Highlights:
+- Singly Linked List: Implemented in 'GhostNode' to manage and render 
+  the player's movement after-image effect (ghosting).
+- State Machine: Manages transitions between idle, walk, attack, and dash.
+- DAG Prerequisite Logic: Used in the skill tree to manage tiered unlocks.
+"""
 import pygame 
 import math
 from settings import *
@@ -78,7 +89,77 @@ class Player(Entity):
 		self.health = 100
 		self.target_health = self.health
 		self.armor = 1
-		self.potions_left = 5
+		self.max_potions = 5
+		self.potions_left = self.max_potions
+		self.potion_heal_amount = 20
+		self.slow_resistance = 0.0
+		self.fire_resistance = 0.0
+		self.weapon_dmg_bonus = {w: 0 for w in weapon_data}
+		self.weapon_cd_bonus = {w: 0 for w in weapon_data}
+		self.exp = 0
+		self.skill_tree_nodes = [
+			# Thuộc tính cơ bản - Máu
+			{'id': 'hp_lv1', 'name': 'Máu Tối Đa LV1', 'category': 'Base', 'cost': 50, 'prereq': [], 'effect': ('health', 50), 'desc': 'Tăng máu tối đa thêm 50.'},
+			{'id': 'hp_lv2', 'name': 'Máu Tối Đa LV2', 'category': 'Base', 'cost': 100, 'prereq': ['hp_lv1'], 'effect': ('health', 100), 'desc': 'Tăng máu tối đa thêm 100.'},
+			
+			# Thuộc tính cơ bản - Tốc độ
+			{'id': 'speed_lv1', 'name': 'Tốc Chạy LV1', 'category': 'Base', 'cost': 40, 'prereq': [], 'effect': ('speed', 1.5), 'desc': 'Tăng tốc chạy thêm 1.5.'},
+			{'id': 'speed_lv2', 'name': 'Tốc Chạy LV2', 'category': 'Base', 'cost': 80, 'prereq': ['speed_lv1'], 'effect': ('speed', 2.5), 'desc': 'Tăng tốc chạy thêm 2.5.'},
+			
+			{'id': 'dash_cd', 'name': 'Lướt Nhanh', 'category': 'Base', 'cost': 45, 'prereq': [], 'effect': ('dash_cooldown', 500), 'desc': 'Giảm hồi chiêu lướt 500ms.'},
+			
+			# Thuộc tính cơ bản - Bình máu
+			{'id': 'pot_count_lv1', 'name': 'Số Bình Máu LV1', 'category': 'Base', 'cost': 40, 'prereq': [], 'effect': ('max_potions', 2), 'desc': 'Tăng 2 bình máu tối đa.'},
+			{'id': 'pot_count_lv2', 'name': 'Số Bình Máu LV2', 'category': 'Base', 'cost': 80, 'prereq': ['pot_count_lv1'], 'effect': ('max_potions', 3), 'desc': 'Tăng 3 bình máu tối đa.'},
+			
+			{'id': 'pot_heal_lv1', 'name': 'Hồi Phục LV1', 'category': 'Base', 'cost': 35, 'prereq': [], 'effect': ('potion_heal', 20), 'desc': 'Hồi thêm 20 HP mỗi bình.'},
+			{'id': 'pot_heal_lv2', 'name': 'Hồi Phục LV2', 'category': 'Base', 'cost': 70, 'prereq': ['pot_heal_lv1'], 'effect': ('potion_heal', 30), 'desc': 'Hồi thêm 30 HP mỗi bình.'},
+
+			# Giáp
+			{'id': 'armor_lv1', 'name': 'Giáp LV1', 'category': 'Armor', 'cost': 50, 'prereq': [], 'effect': ('armor', 5), 'desc': 'Tăng giáp bảo vệ thêm 5.'},
+			{'id': 'armor_lv2', 'name': 'Giáp LV2', 'category': 'Armor', 'cost': 100, 'prereq': ['armor_lv1'], 'effect': ('armor', 8), 'desc': 'Tăng giáp bảo vệ thêm 8.'},
+			
+			{'id': 'slow_res', 'name': 'Kháng Chậm', 'category': 'Armor', 'cost': 30, 'prereq': [], 'effect': ('slow_res', 0.5), 'desc': 'Giảm 50% hiệu ứng làm chậm.'},
+			{'id': 'fire_res', 'name': 'Kháng Lửa', 'category': 'Armor', 'cost': 30, 'prereq': [], 'effect': ('fire_res', 0.5), 'desc': 'Giảm 50% sát thương từ lửa.'},
+
+			# Vũ khí (Sát thương)
+			{'id': 'sword_dmg_lv1', 'name': 'Kiếm LV1', 'category': 'Weapon', 'weapon': 'sword', 'cost': 40, 'prereq': [], 'effect': ('weapon_dmg', 10, 'sword'), 'desc': 'Tăng 10 sát thương cho Kiếm.'},
+			{'id': 'sword_dmg_lv2', 'name': 'Kiếm LV2', 'category': 'Weapon', 'weapon': 'sword', 'cost': 80, 'prereq': ['sword_dmg_lv1'], 'effect': ('weapon_dmg', 15, 'sword'), 'desc': 'Tăng 15 sát thương cho Kiếm.'},
+			
+			{'id': 'lance_dmg_lv1', 'name': 'Thương LV1', 'category': 'Weapon', 'weapon': 'lance', 'cost': 45, 'prereq': [], 'effect': ('weapon_dmg', 15, 'lance'), 'desc': 'Tăng 15 sát thương cho Thương.'},
+			{'id': 'lance_dmg_lv2', 'name': 'Thương LV2', 'category': 'Weapon', 'weapon': 'lance', 'cost': 90, 'prereq': ['lance_dmg_lv1'], 'effect': ('weapon_dmg', 20, 'lance'), 'desc': 'Tăng 20 sát thương cho Thương.'},
+			
+			{'id': 'axe_dmg_lv1', 'name': 'Rìu LV1', 'category': 'Weapon', 'weapon': 'axe', 'cost': 45, 'prereq': [], 'effect': ('weapon_dmg', 12, 'axe'), 'desc': 'Tăng 12 sát thương cho Rìu.'},
+			{'id': 'axe_dmg_lv2', 'name': 'Rìu LV2', 'category': 'Weapon', 'weapon': 'axe', 'cost': 90, 'prereq': ['axe_dmg_lv1'], 'effect': ('weapon_dmg', 18, 'axe'), 'desc': 'Tăng 18 sát thương cho Rìu.'},
+			
+			{'id': 'rapier_dmg_lv1', 'name': 'Kiếm Liễu LV1', 'category': 'Weapon', 'weapon': 'rapier', 'cost': 35, 'prereq': [], 'effect': ('weapon_dmg', 6, 'rapier'), 'desc': 'Tăng 6 sát thương cho Kiếm Liễu.'},
+			{'id': 'rapier_dmg_lv2', 'name': 'Kiếm Liễu LV2', 'category': 'Weapon', 'weapon': 'rapier', 'cost': 70, 'prereq': ['rapier_dmg_lv1'], 'effect': ('weapon_dmg', 10, 'rapier'), 'desc': 'Tăng 10 sát thương cho Kiếm Liễu.'},
+			
+			{'id': 'sai_dmg_lv1', 'name': 'Sai LV1', 'category': 'Weapon', 'weapon': 'sai', 'cost': 40, 'prereq': [], 'effect': ('weapon_dmg', 8, 'sai'), 'desc': 'Tăng 8 sát thương cho Sai.'},
+			{'id': 'sai_dmg_lv2', 'name': 'Sai LV2', 'category': 'Weapon', 'weapon': 'sai', 'cost': 80, 'prereq': ['sai_dmg_lv1'], 'effect': ('weapon_dmg', 12, 'sai'), 'desc': 'Tăng 12 sát thương cho Sai.'},
+
+			# Vũ khí (Hồi chiêu - Giữ nguyên 1 cấp để tránh quá nhiều nút)
+			{'id': 'sword_cd', 'name': 'Kiếm: Tốc Độ', 'category': 'Weapon', 'weapon': 'sword', 'cost': 40, 'prereq': [], 'effect': ('weapon_cd', 25, 'sword'), 'desc': 'Giảm 25ms hồi chiêu cho Kiếm.'},
+			{'id': 'lance_cd', 'name': 'Thương: Tốc Độ', 'category': 'Weapon', 'weapon': 'lance', 'cost': 50, 'prereq': [], 'effect': ('weapon_cd', 75, 'lance'), 'desc': 'Giảm 75ms hồi chiêu cho Thương.'},
+			{'id': 'axe_cd', 'name': 'Rìu: Tốc Độ', 'category': 'Weapon', 'weapon': 'axe', 'cost': 50, 'prereq': [], 'effect': ('weapon_cd', 60, 'axe'), 'desc': 'Giảm 60ms hồi chiêu cho Rìu.'},
+			{'id': 'rapier_cd', 'name': 'Kiếm Liễu: Tốc Độ', 'category': 'Weapon', 'weapon': 'rapier', 'cost': 35, 'prereq': [], 'effect': ('weapon_cd', 15, 'rapier'), 'desc': 'Giảm 15ms hồi chiêu cho Kiếm Liễu.'},
+			{'id': 'sai_cd', 'name': 'Sai: Tốc Độ', 'category': 'Weapon', 'weapon': 'sai', 'cost': 40, 'prereq': [], 'effect': ('weapon_cd', 30, 'sai'), 'desc': 'Giảm 30ms hồi chiêu cho Sai.'}
+		]
+		self.skill_tree_categories = [
+			{'id': 'base', 'name': 'Cơ Bản', 'desc': 'Nâng cấp HP, Tốc độ và Bình máu.', 'nodes': [node for node in self.skill_tree_nodes if node['category'] == 'Base']},
+			{'id': 'armor', 'name': 'Phòng Thủ', 'desc': 'Nâng cấp Giáp và các loại Kháng.', 'nodes': [node for node in self.skill_tree_nodes if node['category'] == 'Armor']},
+			{'id': 'weapon', 'name': 'Vũ Khí', 'desc': 'Tăng sức mạnh và tốc độ cho từng loại vũ khí.', 'nodes': [node for node in self.skill_tree_nodes if node['category'] == 'Weapon']}
+		]
+		self.skill_tree_unlocked = {node['id']: False for node in self.skill_tree_nodes}
+		self.max_health = self.stats['health']
+		
+		# Sai weapon dogs data: health and alive status
+		self.sai_dogs_data = {
+			'black': {'health': 100, 'alive': True, 'max_health': 100},
+			'white': {'health': 100, 'alive': True, 'max_health': 100}
+		}
+		self.sai_dogs_active = [] # Store references to active dog sprites
+		self.last_weapon = self.weapon
 
 		# ghost effect (Linked List)
 		self.ghost_head = None # Head of our Linked List
@@ -223,7 +304,7 @@ class Player(Entity):
 				self.attacking = True
 				self.attack_type = 'magic'
 				self.attack_time = pygame.time.get_ticks()
-				strength = list(magic_data.values())[self.magic_index]['strength'] + self.stats['magic']
+				strength = self.potion_heal_amount + self.stats['magic']
 				cost = list(magic_data.values())[self.magic_index]['cost']
 				if self.create_magic:
 					self.create_magic(style,strength,cost)
@@ -257,9 +338,72 @@ class Player(Entity):
 			if 'idle' not in self.status:
 				self.status = self.status.split('_')[0] + '_idle'
 
+	def get_skill_node(self, node_id):
+		for node in self.skill_tree_nodes:
+			if node['id'] == node_id:
+				return node
+		return None
+
+	def is_skill_unlocked(self, node_id):
+		return self.skill_tree_unlocked.get(node_id, False)
+
+	def can_unlock_skill(self, node):
+		if self.is_skill_unlocked(node['id']):
+			return False
+		if self.exp < node['cost']:
+			return False
+		return True
+
+	def unlock_skill(self, node_id):
+		node = self.get_skill_node(node_id)
+		if not node or not self.can_unlock_skill(node):
+			return False
+		self.exp -= node['cost']
+		self.skill_tree_unlocked[node_id] = True
+		self.apply_skill_effect(node)
+		return True
+
+	def apply_skill_effect(self, node):
+		effect_data = node['effect']
+		effect_type = effect_data[0]
+		value = effect_data[1]
+
+		if effect_type == 'health':
+			self.stats['health'] += value
+			self.target_health += value
+			self.health += value
+		elif effect_type == 'speed':
+			self.stats['speed'] += value
+			self.speed = self.stats['speed']
+		elif effect_type == 'dash_cooldown':
+			self.dash_cooldown_duration = max(500, self.dash_cooldown_duration - value)
+		elif effect_type == 'max_potions':
+			self.max_potions += value
+			self.potions_left += value
+		elif effect_type == 'potion_heal':
+			self.potion_heal_amount += value
+		elif effect_type == 'armor':
+			self.stats['armor'] += value
+		elif effect_type == 'slow_res':
+			self.slow_resistance = min(0.9, self.slow_resistance + value)
+		elif effect_type == 'fire_res':
+			self.fire_resistance = min(0.9, self.fire_resistance + value)
+		elif effect_type == 'weapon_dmg':
+			weapon_name = effect_data[2]
+			self.weapon_dmg_bonus[weapon_name] += value
+		elif effect_type == 'weapon_cd':
+			weapon_name = effect_data[2]
+			# Limit cooldown reduction so it's not too OP
+			# Most weapons have 50-400ms cooldown. 
+			min_cd = 40 if weapon_name in ('sword', 'rapier', 'sai') else 150
+			self.weapon_cd_bonus[weapon_name] += value
+
 	def move(self,speed):
 		if self.is_slowed:
-			speed *= 0.5
+			# Resistance 0.4 means speed * (1 - (0.5 * (1 - 0.4))) = speed * (1 - 0.3) = speed * 0.7
+			# If resistance is 1.0, speed multiplier is 1.0 (no slow)
+			slow_factor = 0.5 * (1 - self.slow_resistance)
+			speed *= (1 - slow_factor)
 		if self.direction.magnitude() != 0:
 			self.direction = self.direction.normalize()
 		
@@ -364,6 +508,16 @@ class Player(Entity):
 		if self.frozen:
 			if current_time - self.freeze_time >= self.freeze_duration:
 				self.frozen = False
+		
+		# Cooldown for weapon attack
+		if not self.can_attack:
+			base_cd = weapon_data[self.weapon]['cooldown']
+			bonus_cd = self.weapon_cd_bonus.get(self.weapon, 0)
+			min_cd = 40 if self.weapon in ('sword', 'rapier', 'sai') else 150
+			actual_cd = max(min_cd, base_cd - bonus_cd)
+			
+			if current_time - self.attack_cooldown_time >= actual_cd:
+				self.can_attack = True
 
 	def animate(self):
 		base_status = self.status.split('_')[0]
@@ -470,8 +624,9 @@ class Player(Entity):
 
 	def get_full_weapon_damage(self):
 		base_damage = self.stats['attack']
-		weapon_damage = weapon_data[self.weapon]['damage']
-		return base_damage + weapon_damage
+		weapon_base_damage = weapon_data[self.weapon]['damage']
+		weapon_bonus = self.weapon_dmg_bonus.get(self.weapon, 0)
+		return base_damage + weapon_base_damage + weapon_bonus
 
 	def freeze(self):
 		self.frozen = True
@@ -511,9 +666,10 @@ class Player(Entity):
 			if current_time - self.burn_start_time < self.burn_duration:
 				if current_time - self.last_burn_damage_time >= self.burn_damage_interval:
 					if not GOD_MODE:
-						damage = 2
-						self.health -= damage
-						self.target_health -= damage
+						base_damage = 2
+						actual_damage = base_damage * (1 - self.fire_resistance)
+						self.health -= actual_damage
+						self.target_health -= actual_damage
 					self.last_burn_damage_time = current_time
 			else:
 				self.is_burning = False
