@@ -88,7 +88,7 @@ class UI:
 			'lance': 'No special status effect. Heavy damage with long cooldown.',
 			'axe': 'Freeze chance: can briefly freeze enemies.',
 			'rapier': 'No special status effect. Very fast light attacks.',
-			'sai': 'No special status effect. Balanced speed and damage.'
+			'sai': 'Summoner: can summon Divine Dogs to fight alongside you.'
 		}
 
 
@@ -157,21 +157,50 @@ class UI:
 		hp_rect = hp_surf.get_rect(midleft = (bg_rect.right + 10, bg_rect.centery))
 		self.display_surface.blit(hp_surf, hp_rect)
 
-	def show_armor_bar(self, current, max_amount, bg_rect, color, border_radius = 5):
+	def show_armor_bar(self, current, max_amount, bg_rect, color, target_amount = None, border_radius = 5):
 		# Draw background
 		pygame.draw.rect(self.display_surface, UI_BG_COLOR, bg_rect, border_radius = border_radius)
 		
-		if max_amount > 0:
-			ratio = current / max_amount
+		if target_amount is not None:
+			# Armor currently only INCREASES via skill tree in this game, 
+			# but we use the same logic as health just in case.
+			if target_amount > current:
+				# Show preview of where armor is going
+				target_ratio = target_amount / max_amount if max_amount > 0 else 0
+				target_width = bg_rect.width * target_ratio
+				target_rect = bg_rect.copy()
+				target_rect.width = target_width
+				pygame.draw.rect(self.display_surface, '#444444', target_rect, border_radius = border_radius)
+				
+				# Current armor on top
+				ratio = current / max_amount if max_amount > 0 else 0
+				current_width = bg_rect.width * ratio
+				current_rect = bg_rect.copy()
+				current_rect.width = current_width
+				if current_width > 0:
+					pygame.draw.rect(self.display_surface, color, current_rect, border_radius = border_radius)
+			else:
+				# If armor were to decrease
+				ratio = current / max_amount if max_amount > 0 else 0
+				ghost_width = bg_rect.width * ratio
+				ghost_rect = bg_rect.copy()
+				ghost_rect.width = ghost_width
+				pygame.draw.rect(self.display_surface, '#CCCCCC', ghost_rect, border_radius = border_radius)
+				
+				target_ratio = target_amount / max_amount if max_amount > 0 else 0
+				target_width = bg_rect.width * target_ratio
+				target_rect = bg_rect.copy()
+				target_rect.width = target_width
+				if target_width > 0:
+					pygame.draw.rect(self.display_surface, color, target_rect, border_radius = border_radius)
 		else:
-			ratio = 0
-		
-		current_width = bg_rect.width * ratio
-		current_rect = bg_rect.copy()
-		current_rect.width = current_width
-
-		if current_width > 0:
-			pygame.draw.rect(self.display_surface,color,current_rect, border_radius = border_radius)
+			# Fallback if no target_amount
+			ratio = current / max_amount if max_amount > 0 else 0
+			current_width = bg_rect.width * ratio
+			current_rect = bg_rect.copy()
+			current_rect.width = current_width
+			if current_width > 0:
+				pygame.draw.rect(self.display_surface, color, current_rect, border_radius = border_radius)
 		
 		pygame.draw.rect(self.display_surface,UI_BORDER_COLOR,bg_rect,2, border_radius = border_radius)
 
@@ -642,7 +671,7 @@ class UI:
 
 	def display(self, player, map_index, monster_count, total_monsters, elapsed_time):
 		self.show_bar(player.health, player.stats['health'], self.health_bar_rect, HEALTH_COLOR, player.target_health)
-		self.show_armor_bar(player.armor, player.stats['armor'], self.armor_bar_rect, ARMOR_COLOR)
+		self.show_armor_bar(player.armor, player.stats['armor'], self.armor_bar_rect, ARMOR_COLOR, player.target_armor)
 		self.show_monster_count(monster_count, total_monsters)
 		self.show_timer(elapsed_time)
 		self.show_exp(player.exp)

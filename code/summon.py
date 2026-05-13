@@ -84,6 +84,19 @@ class DivineDog(Entity):
         self.max_health = self.monster_info.get('health', 100)
         self.speed      = self.monster_info.get('speed', 3.1)
         self.attack_damage = self.monster_info.get('damage', 8)
+        self.armor      = 0 # Default base armor
+
+        # ── Scaling for Player-owned Summons ──────────────────────────────────
+        if is_player_owned:
+            # 1. Health: +10% of player health
+            self.max_health += int(player.stats['health'] * 0.1)
+            # 2. Speed: +10% of player speed
+            self.speed += player.stats['speed'] * 0.1
+            # 3. Damage: Hard set to 15 as requested
+            self.attack_damage = 15
+            # 4. Armor: +20% of player armor
+            self.armor = player.armor * 0.2
+        
         self.attack_radius = self.monster_info.get('attack_radius', 80)
         self.exp_reward = self.monster_info.get('exp', 0) if not is_player_owned else 0
 
@@ -331,6 +344,8 @@ class DivineDog(Entity):
         return self.player.rect.center # Orbit player if no enemies
 
     def _chase_target(self):
+        if self.state == 'despawning' or not self.owner.alive():
+            return
         target_pos = self._get_target_pos()
         
         # Steering leashing: Adjust target if too far from owner
@@ -348,6 +363,7 @@ class DivineDog(Entity):
         self.facing_left = self.direction.x < 0
 
     def _orbit_owner(self, dt):
+        if self.state == 'despawning': return
         # 1. Target Position in the orbit
         self.orbit_angle += self.orbit_speed * dt
         tx = self.owner.rect.centerx + math.cos(self.orbit_angle) * self.orbit_radius
@@ -376,6 +392,10 @@ class DivineDog(Entity):
         dog_vec = pygame.math.Vector2(self.hitbox.center)
         dist = math.hypot(target_pos[0] - dog_vec.x, target_pos[1] - dog_vec.y)
         
+        # ── Fix: Stop attacking if owner is dead or despawning ──
+        if self.state == 'despawning' or not self.owner.alive():
+            return
+
         if dist < self.attack_radius and now - self.last_attack_time > self.attack_cooldown:
             self.last_attack_time = now
             self.attack_feedback_time = now
@@ -474,6 +494,10 @@ class DivineDog(Entity):
                 damage = attacker.damage
             else:
                 damage = 10
+            
+            # Apply summon's own armor reduction
+            damage -= self.armor
+            if damage < 1: damage = 1
                 
             self.health -= damage
             self.hit_time = pygame.time.get_ticks()

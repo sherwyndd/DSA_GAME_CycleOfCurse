@@ -925,7 +925,7 @@ class Level:
 						variant = variant,
 						owner = self.player,
 						player = self.player,
-						groups = [self.visible_sprites, self.attackable_sprites], # So they can be hit by enemies
+						groups = [self.visible_sprites, self.attackable_sprites, self.obstacle_sprites], # So they block movement and can be hit
 						obstacle_sprites = self.obstacle_sprites,
 						damage_player = self.damage_player,
 						animation_player = self.animation_player,

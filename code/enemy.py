@@ -99,7 +99,7 @@ class Enemy(Entity):
 			self._summon_damage  = None     # set by Level
 			self._summon_animation_player = None # set by Level
 			self._summon_cost    = 80       # mana per summon event
-			self._mana_regen     = 8        # mana per second
+			self._mana_regen     = 12       # mana per second
 			self._last_mana_tick = pygame.time.get_ticks()
 			self._dead_summons   = set()    # track 'black', 'white', 'totality', 'bull', 'frog'
 			self._fusion_active  = False

@@ -108,10 +108,11 @@ class Player(Entity):
 		self.magic_cooldown_time = 0
 
 		# stats
-		self.stats = {'health': 100,'armor':10,'attack': 10,'magic': 4,'speed': 5}
+		self.stats = {'health': 100,'armor':1,'attack': 10,'magic': 4,'speed': 5}
 		self.health = 100
 		self.target_health = self.health
 		self.armor = 1
+		self.target_armor = self.armor
 		self.max_potions = 5
 		self.potions_left = self.max_potions
 		self.potion_heal_amount = 20
@@ -139,8 +140,8 @@ class Player(Entity):
 			{'id': 'pot_heal_lv2', 'name': 'Hồi Phục LV2', 'category': 'Base', 'cost': 70, 'prereq': ['pot_heal_lv1'], 'effect': ('potion_heal', 30), 'desc': 'Hồi thêm 30 HP mỗi bình.'},
 
 			# Giáp
-			{'id': 'armor_lv1', 'name': 'Giáp LV1', 'category': 'Armor', 'cost': 50, 'prereq': [], 'effect': ('armor', 5), 'desc': 'Tăng giáp bảo vệ thêm 5.'},
-			{'id': 'armor_lv2', 'name': 'Giáp LV2', 'category': 'Armor', 'cost': 100, 'prereq': ['armor_lv1'], 'effect': ('armor', 8), 'desc': 'Tăng giáp bảo vệ thêm 8.'},
+			{'id': 'armor_lv1', 'name': 'Giáp LV1', 'category': 'Armor', 'cost': 50, 'prereq': [], 'effect': ('armor', 3), 'desc': 'Tăng giáp bảo vệ thêm 3.'},
+			{'id': 'armor_lv2', 'name': 'Giáp LV2', 'category': 'Armor', 'cost': 100, 'prereq': ['armor_lv1'], 'effect': ('armor', 5), 'desc': 'Tăng giáp bảo vệ thêm 5.'},
 			
 			{'id': 'slow_res', 'name': 'Kháng Chậm', 'category': 'Armor', 'cost': 30, 'prereq': [], 'effect': ('slow_res', 0.5), 'desc': 'Giảm 50% hiệu ứng làm chậm.'},
 			{'id': 'fire_res', 'name': 'Kháng Lửa', 'category': 'Armor', 'cost': 30, 'prereq': [], 'effect': ('fire_res', 0.5), 'desc': 'Giảm 50% sát thương từ lửa.'},
@@ -407,6 +408,7 @@ class Player(Entity):
 			self.potion_heal_amount += value
 		elif effect_type == 'armor':
 			self.stats['armor'] += value
+			self.target_armor += value
 		elif effect_type == 'slow_res':
 			self.slow_resistance = min(0.9, self.slow_resistance + value)
 		elif effect_type == 'fire_res':
@@ -704,6 +706,13 @@ class Player(Entity):
 			self.health += diff / 15.0 # Smoother and faster than / 50
 			if abs(self.target_health - self.health) < 0.1:
 				self.health = self.target_health
+
+		# gradual armor transition
+		if self.armor != self.target_armor:
+			diff = self.target_armor - self.armor
+			self.armor += diff / 15.0
+			if abs(self.target_armor - self.armor) < 0.1:
+				self.armor = self.target_armor
 
 		# burn effect
 		if self.is_burning:
