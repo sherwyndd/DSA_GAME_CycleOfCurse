@@ -24,7 +24,25 @@ from particles import AnimationPlayer
 from support import remove_background_floodfill
 
 class Level:
+	"""
+	Lớp điều phối toàn bộ thế giới game trong một phiên chơi.
+
+	Quản lý sprite groups, bản đồ hiện tại, trạng thái game (playing, game_over, win),
+	va chạm và logic phần thưởng sau màn.
+
+	DSA Highlights:
+	- YSortCameraGroup: Sắp xếp sprite theo trục Y (Sorting) để mô phỏng chiều sâu.
+	- Spatial Grid: Quản lý vị trí các thực thể để tối ưu va chạm và pathfinding.
+	"""
+
 	def __init__(self):
+		"""
+		Khởi tạo các thành phần cốt lõi của màn chơi:
+		- Sprite groups (visible, obstacle, attackable).
+		- Caching ảnh nền các map.
+		- Khởi tạo UI, Timer, và các hệ thống hỗ trợ (AnimationPlayer, MagicPlayer).
+		"""
+
 
 		# get the display surface 
 		self.display_surface = pygame.display.get_surface()
@@ -111,6 +129,13 @@ class Level:
 		self.enqueue_round_intro(show_starter_weapon = True)
 
 	def create_map(self):
+		"""
+		Nạp dữ liệu bản đồ từ settings.MAPS và khởi tạo các Sprite:
+		- Duyệt ma trận layout: 'x' (tường), 'p' (player), 'h' (hazard), 'g' (gate).
+		- Tính toán camera constraints dựa trên kích thước map.
+		- Khởi tạo boss/quái vật tương ứng với từng map.
+		"""
+
 		map_data = MAPS[self.current_map]
 		layout = map_data['layout']
 		self.map_width = map_data['width']
@@ -340,31 +365,35 @@ class Level:
 	def enemy_attack_logic(self):
 		if self.enemy_attack_sprites:
 			for attack_sprite in self.enemy_attack_sprites:
-				# Use hitbox for more accurate collision if available, otherwise rect
 				collision_rect = attack_sprite.hitbox if hasattr(attack_sprite, 'hitbox') else attack_sprite.rect
+				
+				# 1. Hit Player?
 				if collision_rect.colliderect(self.player.hitbox):
-					# Check if the sprite has an owner (required for damage calc)
 					if hasattr(attack_sprite, 'owner') and attack_sprite.owner:
 						weapon_type = attack_sprite.owner.weapon if hasattr(attack_sprite.owner, 'weapon') else 'weapon'
 						self.damage_player(attack_sprite.owner.attack_damage, weapon_type)
-						
-						# If it's a magic projectile, kill it on hit
 						if getattr(attack_sprite, 'sprite_type', '') == 'magic':
 							attack_sprite.kill()
-					# If it doesn't have an owner but has its own damage
 					elif hasattr(attack_sprite, 'damage'):
 						self.damage_player(attack_sprite.damage, 'weapon')
+						if getattr(attack_sprite, 'sprite_type', '') == 'magic':
+							attack_sprite.kill()
 				
-				else:
-					# Also check collision with player summons
-					for summon in self.visible_sprites:
-						if getattr(summon, 'sprite_type', '') == 'player_summon':
-							if collision_rect.colliderect(summon.hitbox):
-								if hasattr(attack_sprite, 'owner') and attack_sprite.owner:
-									if hasattr(summon, 'get_damage'):
-										summon.get_damage(self.player, 'enemy') # Pass player as dummy attacker
-									if getattr(attack_sprite, 'sprite_type', '') == 'magic':
-										attack_sprite.kill()
+				# 2. Hit Player Summons? (Always check)
+				for summon in self.visible_sprites:
+					if getattr(summon, 'sprite_type', '') == 'player_summon' and summon.alive():
+						if collision_rect.colliderect(summon.hitbox):
+							if hasattr(attack_sprite, 'owner') and attack_sprite.owner:
+								if hasattr(summon, 'get_damage'):
+									# Pass the actual attacker (boss/enemy) instead of dummy player
+									summon.get_damage(attack_sprite.owner, 'enemy') 
+								if getattr(attack_sprite, 'sprite_type', '') == 'magic':
+									attack_sprite.kill()
+							elif hasattr(attack_sprite, 'damage'):
+								if hasattr(summon, 'get_damage'):
+									summon.get_damage(attack_sprite, 'enemy')
+								if getattr(attack_sprite, 'sprite_type', '') == 'magic':
+									attack_sprite.kill()
 
 	def handle_skill_tree_input(self, events):
 		categories = self.player.skill_tree_categories
@@ -507,7 +536,14 @@ class Level:
 		self.animation_player.create_particles(particle_type, pos, [self.visible_sprites])
 
 	def update_gate_state(self):
-		self.current_monsters = len(self.attackable_sprites)
+		"""
+		Kiểm tra điều kiện mở cổng (Win Condition):
+		- Đếm số lượng quái vật hiện tại (loại bỏ player_summon).
+		- Nếu quái = 0: Mở các cổng chắn bằng cách xóa khỏi obstacle_sprites.
+		- Xử lý logic trao thưởng vũ khí mới khi clear màn.
+		"""
+
+		self.current_monsters = len([s for s in self.attackable_sprites if s.sprite_type != 'player_summon'])
 		
 		# Check for win condition / reward
 		if self.current_monsters == 0 and self.total_monsters > 0 and getattr(self, 'reward_given', True) == False:

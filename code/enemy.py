@@ -18,7 +18,22 @@ from entity import Entity
 from support import *
 
 class Enemy(Entity):
+	"""
+	Lớp quản lý kẻ thù và trí tuệ nhân tạo (AI).
+
+	DSA Highlights:
+	- BFS (Breadth-First Search): Thuật toán tìm đường ngắn nhất trên lưới ô vuông.
+	- Spatial Grid: Chuyển đổi tọa độ pixel sang tọa độ lưới (Grid) để tính toán đường đi.
+	- FSM: Quản lý các trạng thái AI (idle, move, attack).
+	"""
+
 	def __init__(self, monster_name, pos, groups, obstacle_sprites, damage_player, trigger_death_particles, create_attack = None, destroy_attack = None, create_projectile = None, animation_player = None, particle_groups = None, level = None):
+		"""
+		Khởi tạo kẻ thù:
+		- Nạp chỉ số (HP, Damage, Speed) từ monster_data.
+		- Thiết lập logic tấn công và triệu hồi (đối với Boss).
+		"""
+
 
 		# general setup
 		super().__init__(groups)
@@ -544,6 +559,15 @@ class Enemy(Entity):
 		return direction
 
 	def get_bfs_direction(self, targets):
+		"""
+		Thuật toán Tìm kiếm theo chiều rộng (BFS) để tìm đường đi ngắn nhất:
+		1. Chuyển đổi vị trí Enemy và Target sang tọa độ lưới Grid (16x24).
+		2. Sử dụng Queue (collections.deque) để loang từ ô Target về phía Enemy.
+		3. Trả về vector hướng di chuyển cho ô kế tiếp trong lộ trình tối ưu.
+		
+		Độ phức tạp: O(Rows x Cols) - đảm bảo chạy mượt mà mỗi frame.
+		"""
+
 		if not isinstance(targets, list): targets = [targets]
 		_, _, target = self.get_target_distance_direction(targets)
 		if not target: return pygame.math.Vector2()

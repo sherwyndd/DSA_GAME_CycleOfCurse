@@ -2,6 +2,14 @@ import pygame
 from support import import_folder, remove_background_floodfill
 
 class AnimationPlayer:
+	"""
+	Kho lưu trữ và factory cho tất cả hiệu ứng hạt trong game.
+
+	DSA Highlights:
+	- Dictionary Mapping: Lưu trữ frame theo loại hiệu ứng (Key-Value access O(1)).
+	- Image Processing: Hỗ trợ Tint và Scale frame procedurally.
+	"""
+
 	def __init__(self):
 		smoke_frames = import_folder('../graphics/particles/smoke')
 		self.frames = {

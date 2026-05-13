@@ -3,6 +3,15 @@ from settings import *
 from support import remove_background_floodfill
 
 class UI:
+	"""
+	Bộ giao diện người dùng (HUD) và các màn hình tương tác.
+
+	DSA Highlights:
+	- Linear Interpolation (Lerp): Thanh máu co dãn mượt mà.
+	- DAG Prerequisite: Kiểm tra điều kiện mở khóa trong Cây kỹ năng.
+	- Sorting: Hiển thị bảng xếp hạng theo thứ tự thời gian.
+	"""
+
 	def __init__(self):
 		
 		# general 
@@ -84,6 +93,11 @@ class UI:
 
 
 	def show_bar(self,current,max_amount,bg_rect,color, target_amount = None, border_radius = 5):
+		"""
+		Vẽ thanh trạng thái với hiệu ứng Lerp (nội suy máu).
+		Thanh 'ghost' màu trắng sẽ trễ lại khi mất máu để tạo cảm giác lực tác động.
+		"""
+
 		# draw bg 
 		pygame.draw.rect(self.display_surface,UI_BG_COLOR,bg_rect, border_radius = border_radius)
 
@@ -533,7 +547,7 @@ class UI:
 		nodes = [
 			n for n in selected_category['nodes'] 
 			if (n.get('weapon') is None or n.get('weapon') in player.unlocked_weapons) and
-			   (all(player.is_skill_unlocked(p) for p in n.get('prereq', [])))
+			(all(player.is_skill_unlocked(p) for p in n.get('prereq', [])))
 		]
 
 		node_w, node_h = 280, 70

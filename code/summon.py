@@ -15,12 +15,27 @@ import math
 from entity import Entity
 
 class DivineDog(Entity):
-    """Megumi's summoned Divine Dog — Inherits from Entity to use standard move/collision."""
+    """
+    Thức thần Khuyển Thần (Divine Dog) — Lớp cơ sở cho các loại triệu hồi.
+
+    DSA Highlights:
+    - Separation Logic: Giải thuật tách biệt để các thực thể không chồng lên nhau.
+    - BFS Pathfinding: Tìm đường đến mục tiêu tránh vật cản.
+    - Orbit/Chase States: Quản lý hành vi bay quanh chủ hoặc đuổi mục tiêu.
+    """
+
 
     SPAWN_DURATION  = 600   # ms - time for spawn reveal animation
     DESPAWN_DURATION = 500  # ms - time for despawn hide animation
 
     def __init__(self, variant, owner, player, groups, obstacle_sprites, damage_player, animation_player, is_player_owned = False, attackable_sprites = None):
+        """
+        Khởi tạo Thức thần:
+        - Xử lý hiệu ứng spawn (loang điểm ảnh).
+        - Thiết lập thuộc tính phe phái (đồng minh/kẻ thù).
+        - Nạp các thông số AI (orbit angle, speed).
+        """
+
         super().__init__(groups)
         self.animation_player = animation_player
         self.visible_sprites = groups[0] if isinstance(groups, list) else groups
@@ -302,6 +317,10 @@ class DivineDog(Entity):
         min_dist = 9999
         for sprite in self.attackable_sprites:
             if sprite != self and sprite != self.owner and hasattr(sprite, 'health') and sprite.health > 0:
+                # ── Fix: Don't target fellow friendly summons ──
+                if self.is_player_owned and getattr(sprite, 'sprite_type', '') == 'player_summon':
+                    continue
+                
                 dist = math.hypot(sprite.rect.centerx - self.hitbox.centerx, sprite.rect.centery - self.hitbox.centery)
                 if dist < min_dist:
                     min_dist = dist
@@ -372,6 +391,10 @@ class DivineDog(Entity):
                         # 2. Don't attack the player (owner)
                         if sprite == self.player or sprite == self.owner:
                             continue
+                        
+                        # 3. Double check: don't attack self or owner's other dogs
+                        if self.is_player_owned and getattr(sprite, 'sprite_type', '') == 'player_summon':
+                            continue
                             
                         s_dist = math.hypot(sprite.rect.centerx - self.hitbox.centerx, sprite.rect.centery - self.hitbox.centery)
                         if s_dist < self.attack_radius:
@@ -440,9 +463,19 @@ class DivineDog(Entity):
             self.state = 'despawning'
             self.state_timer = pygame.time.get_ticks()
 
-    def get_damage(self, player, attack_type):
+    def get_damage(self, attacker, attack_type):
         if self.vulnerable and self.state not in ('spawning', 'despawning'):
-            self.health -= player.get_full_weapon_damage()
+            # Determine damage based on attacker type
+            if getattr(attacker, 'sprite_type', '') == 'enemy':
+                damage = attacker.attack_damage if hasattr(attacker, 'attack_damage') else 10
+            elif hasattr(attacker, 'get_full_weapon_damage'):
+                damage = attacker.get_full_weapon_damage()
+            elif hasattr(attacker, 'damage'):
+                damage = attacker.damage
+            else:
+                damage = 10
+                
+            self.health -= damage
             self.hit_time = pygame.time.get_ticks()
             self.vulnerable = False
             self.direction = pygame.math.Vector2() 
@@ -451,8 +484,8 @@ class DivineDog(Entity):
                 if self.is_player_owned:
                     self.player.sai_dogs_data[self.variant]['alive'] = False
             
-            # Axe freeze effect
-            if player.weapon == 'axe':
+            # Axe freeze effect only from player
+            if hasattr(attacker, 'weapon') and attacker.weapon == 'axe':
                 import random
                 if random.random() < 0.2:
                     self.freeze()
@@ -584,6 +617,13 @@ class DivineDog(Entity):
                     self.owner.health = min(max_hp, self.owner.health + heal_amount)
                     if self.is_player_owned:
                         self.player.target_health = self.player.health
+
+            # ── Dog's own regeneration when active ──
+            if not hasattr(self, '_last_self_regen_tick'): self._last_self_regen_tick = now
+            if now - self._last_self_regen_tick >= 1000:
+                self._last_self_regen_tick = now
+                # Active dogs regen slowly (1 HP per second)
+                self.health = min(self.max_health, self.health + 1)
 
 class Frog(DivineDog):
     SPAWN_DURATION = 1000 # Slower spawn effect (1 second)

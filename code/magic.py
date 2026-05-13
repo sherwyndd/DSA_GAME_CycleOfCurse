@@ -3,6 +3,16 @@ import math
 from settings import *
 
 class GhostNode:
+	"""
+	Node đơn trong Linked List lưu một afterimage của SukunaSlash.
+
+	Attributes:
+		surf (pygame.Surface): Bản sao Surface của slash tại thời điểm tạo node.
+		rect (pygame.Rect): Vị trí tại thời điểm tạo node.
+		alpha (int): Độ trong suốt hiện tại (giảm dần mỗi frame).
+		next (GhostNode | None): Node tiếp theo trong danh sách liên kết.
+	"""
+
 	def __init__(self, surf, rect, alpha):
 		self.surf = surf.copy()
 		self.rect = rect.copy()
@@ -11,6 +21,14 @@ class GhostNode:
 		self.next = None
 
 class SukunaSlash(pygame.sprite.Sprite):
+	"""
+	Projectile đặc biệt của Sukuna (Dismantle).
+
+	DSA Highlights:
+	- Singly Linked List: Quản lý chuỗi bóng ma (Ghost trail) kéo dài sau đạn.
+	- Sin Wave Scaling: Hiệu ứng Shimmer (nhấp nháy) kích thước procedurally.
+	"""
+
 	def __init__(self, pos, direction, groups, obstacle_sprites, animation_player, player, owner = None):
 		super().__init__(groups)
 		self.animation_player = animation_player
@@ -119,6 +137,11 @@ class MagicPlayer:
 		self.animation_player = animation_player
 
 	def heal(self,player,strength,cost,groups):
+		"""
+		Sử dụng Thức thần Khuyển Thần trắng để hồi máu.
+		Giá trị hồi phục được cộng vào target_health để thanh HP Lerp mượt mà.
+		"""
+
 		player.target_health += strength
 		if player.target_health >= player.stats['health']:
 			player.target_health = player.stats['health']

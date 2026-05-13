@@ -16,6 +16,11 @@ from support import *
 from entity import Entity
 
 class GhostNode:
+	"""
+	Node trong Linked List đơn dùng để quản lý hiệu ứng bóng ma (afterimage).
+	Mỗi Node lưu giữ Surface, vị trí và độ trong suốt tại một thời điểm.
+	"""
+
 	def __init__(self, surf, rect, alpha):
 		self.surf = surf.copy()
 		self.rect = rect.copy()
@@ -25,7 +30,25 @@ class GhostNode:
 GOD_MODE = False
 
 class Player(Entity):
+	"""
+	Lớp đại diện cho nhân vật người chơi.
+
+	Chịu trách nhiệm xử lý input, di chuyển, chiến đấu và thăng tiến kỹ năng.
+
+	DSA Highlights:
+	- Singly Linked List: Quản lý vệt bóng ma khi dash.
+	- FSM: Quản lý các trạng thái hoạt ảnh và hành động.
+	- DAG: Kiểm tra điều kiện tiên quyết trong cây kỹ năng.
+	"""
+
 	def __init__(self,pos,groups,obstacle_sprites,create_attack,destroy_attack):
+		"""
+		Khởi tạo Player:
+		- Thiết lập 3 loại nhân vật (Monkey, Megumi, Sukuna).
+		- Khởi tạo các chỉ số (HP, Armor, EXP, v.v.).
+		- Thiết lập hệ thống kỹ năng và vũ khí khởi đầu.
+		"""
+
 		super().__init__(groups)
 		
 		# character setup
@@ -585,6 +608,13 @@ class Player(Entity):
 			self.image.set_alpha(255)
 
 	def update_ghosts(self):
+		"""
+		Cập nhật danh sách liên kết các bóng ma (Singly Linked List).
+		- Thêm Node mới vào đầu (Head) khi đang dash.
+		- Duyệt danh sách để giảm độ trong suốt (alpha).
+		- Xóa Node ở cuối (Tail) khi đã mờ hẳn (O(1) logic).
+		"""
+
 		# 1. Thêm bóng ma mới (Chỉ khi đang lướt - DASH)
 		is_dashing = self.attacking and self.attack_type == 'dash'
 		
@@ -653,6 +683,20 @@ class Player(Entity):
 		self.cooldowns()
 		self.get_status()
 		self.animate()
+		
+		# Dog regeneration for waiting dogs (not summoned)
+		if not hasattr(self, 'last_dog_regen_time'): self.last_dog_regen_time = current_time
+		if current_time - self.last_dog_regen_time >= 1000:
+			self.last_dog_regen_time = current_time
+			for variant, data in self.sai_dogs_data.items():
+				is_active = False
+				for dog in self.sai_dogs_active:
+					if dog.variant == variant:
+						is_active = True
+						break
+				if not is_active:
+					# Regenerate 5 HP per second when waiting
+					data['health'] = min(data['max_health'], data['health'] + 5)
 		
 		# gradual health transition (both healing and damage)
 		if self.health != self.target_health:
